@@ -171,7 +171,18 @@ Each phase ends green: `cargo test` + `cargo clippy -- -D warnings` + manual run
 
 Phase 1 is the honest milestone: the calculator exists and is proven before any pixels.
 
-**Landed:** phase 0 (scaffold, PR-less) and phase 1 (engine + parity, PR #1) are on `develop`.
+**Landed:** phase 0 (scaffold, PR-less), phase 1 (engine + parity, PR #1) and phase 2 (keypad + display, PR #2) are on `develop`.
+
+**egui 0.37 API notes** (found the hard way, phase 2 — re-read before touching the UI layer):
+
+- `Context::run` is gone: use `ctx.run_ui(raw_input, |ui| ...) -> FullOutput`, then `.drop_without_applying_deltas()`.
+- `RawInput` has `screen_rect: Option<Rect>`, no `pointer` field. Pointer state arrives as
+  `Event::PointerMoved` / `Event::PointerButton { pos, button, pressed, modifiers }`.
+- `Ui::with_layout` **takes all remaining space** — a display line built with it left the keypad zero pixels tall.
+  Use `Ui::allocate_ui_with_layout(size, layout, ..)` to claim an explicit height.
+- Headless UI tests work: `Context::default()` + synthetic events, no window, no GPU. Kept as the phase-2
+  click proof; it also means "no UI snapshot tests" in §7 costs less than assumed — extend it in phase 3
+  for keyboard events rather than reaching for a screenshot harness.
 
 ---
 
