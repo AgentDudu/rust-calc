@@ -54,6 +54,10 @@ pub struct Entry {
 pub struct Calculator {
     /// Raw input buffer — digits, optional `-`, optional `.`. Never contains separators.
     display: String,
+    /// Last input passed to [`Calculator::input`]; see [`Calculator::last_input`].
+    last_input: Option<Input>,
+    /// Expression line above the display, kept after `=` so the result has a context.
+    last_expression: Option<String>,
     acc: Option<f64>,
     pending: Option<Op>,
     /// Leftover `(op, operand)` so a second `=` repeats the last step.
@@ -75,6 +79,8 @@ impl Calculator {
     pub fn new() -> Self {
         Calculator {
             display: "0".to_string(),
+            last_input: None,
+            last_expression: None,
             acc: None,
             pending: None,
             last_op: None,
@@ -86,6 +92,12 @@ impl Calculator {
     }
 
     pub fn input(&mut self, input: Input) {
+        self.apply(input);
+        // After `apply`, because the Clear arm rebuilds the whole struct.
+        self.last_input = Some(input);
+    }
+
+    fn apply(&mut self, input: Input) {
         use Input::*;
 
         match input {
@@ -160,6 +172,20 @@ impl Calculator {
         self.error.is_some()
     }
 
+    /// Last input delivered to the engine. Stays set even when an error lockout ignored it —
+    /// it records that a key reached the engine, which is what tests and diagnostics ask.
+    pub fn last_input(&self) -> Option<Input> {
+        self.last_input
+    }
+
+    /// The dim line above the display: `12 +` while waiting, `12 + 7 =` after equals.
+    pub fn expression_text(&self) -> String {
+        match (self.pending, self.acc) {
+            (Some(op), Some(acc)) => format!("{} {}", fmt::format_display(acc), op.symbol()),
+            _ => self.last_expression.clone().unwrap_or_default(),
+        }
+    }
+
     pub fn value(&self) -> f64 {
         self.display.parse().unwrap_or(0.0)
     }
@@ -205,6 +231,7 @@ impl Calculator {
         if self.fresh {
             self.display = digit.to_string();
             self.fresh = false;
+            self.last_expression = None;
             return;
         }
         if self.digit_count() >= MAX_INPUT_DIGITS {
@@ -221,6 +248,7 @@ impl Calculator {
         if self.fresh {
             self.display = "0.".to_string();
             self.fresh = false;
+            self.last_expression = None;
         } else if !self.display.contains('.') {
             self.display.push('.');
         }
@@ -267,6 +295,7 @@ impl Calculator {
         };
 
         self.push_history(expression, result);
+        self.last_expression = Some(self.history()[0].expression.clone());
         self.set_value(result);
     }
 
@@ -381,6 +410,25 @@ mod tests {
 
     fn display_of(inputs: &[Input]) -> String {
         press(inputs).display_text()
+    }
+
+    fn digit_input(c: char) -> Input {
+        Input::from_char(c).expect("script character")
+    }
+
+    #[test]
+    fn expression_line_tracks_the_pending_step() {
+        let mut calc = Calculator::new();
+        for c in "12+7".chars() {
+            calc.input(digit_input(c));
+        }
+        assert_eq!(calc.expression_text(), "12 +");
+        calc.input(Equals);
+        assert_eq!(calc.expression_text(), "12 + 7 =");
+        calc.input(Digit('3'));
+        assert_eq!(calc.expression_text(), "");
+        calc.input(Clear);
+        assert_eq!(calc.expression_text(), "");
     }
 
     #[test]

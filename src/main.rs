@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod ui;
 
 use eframe::egui;
 
@@ -16,6 +17,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Calculator",
         options,
-        Box::new(|_cc| Ok(Box::new(app::CalcApp))),
+        Box::new(|_cc| Ok(Box::new(app::CalcApp::default()))),
     )
 }
