@@ -171,6 +171,8 @@ Each phase ends green: `cargo test` + `cargo clippy -- -D warnings` + manual run
 
 Phase 1 is the honest milestone: the calculator exists and is proven before any pixels.
 
+**Landed:** phase 0 (scaffold, PR-less) and phase 1 (engine + parity, PR #1) are on `develop`.
+
 ---
 
 ## 7. Testing
