@@ -104,9 +104,10 @@ State rules (this table **is** the spec — implement exactly, then test each ro
 Display formatting (`fmt.rs`):
 - Rust `f64` `Display` is shortest-round-trip → `0.1 + 0.2` renders `0.30000000000000004`.
   **Known v1 deviation** from Windows (which uses arbitrary-precision decimal). Mitigation kept cheap:
-  trim to 15 significant digits, then strip trailing zeros → `0.3`. Documented, not "fixed" with a decimal crate.
-- Group integer part with `,` every 3 digits; never group inside the fraction; cap 16 sig digits,
-  fall back to `e` notation past that.
+  round to 16 significant digits (what Windows shows), then strip trailing zeros → `0.3`.
+  Documented, not "fixed" with a decimal crate.
+- Group integer part with `,` every 3 digits; never group inside the fraction; plain decimal between
+  1e-9 and 1e16, `E` notation outside that.
 - `-0` → `0`.
 
 ---
@@ -191,7 +192,7 @@ Phase 1 is the honest milestone: the calculator exists and is proven before any 
 |---|---|
 | egui 0.37 API drift between minor versions | pin exact `=0.37.0` in `Cargo.toml`; no `*` deps |
 | Buttons stealing keyboard focus breaks typing | disable focus on keypad buttons in phase 3, verify with keyboard-only test |
-| `f64` display artifacts (`0.30000000000000004`) | 15-sig-digit trim in `fmt.rs`; documented deviation, decimal crate is the escape hatch |
+| `f64` display artifacts (`0.30000000000000004`) | 16-sig-digit rounding in `fmt.rs`; documented deviation, decimal crate is the escape hatch |
 | Percent/equals-repeat semantics wrong | they are in the §4 spec table + parity tests, not in UI code |
 | Text clipping on narrow window | auto-shrink display font + `min_size` on window, checked in phase 6 |
 | Windows look "not Fluent" | accept as v1 limitation; egui theming gets close, not pixel-perfect |
