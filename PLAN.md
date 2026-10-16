@@ -224,6 +224,9 @@ Rules:
 3. PRs into `main`: **stop and ask you first.** No push, no merge, no tag on `main` until you say so —
    even when CI is green and the work looks done. Treat `gh pr merge <n>`, `git push origin main`,
    `git tag -a` as approval-gated commands.
+   Approval is **out-of-band (in chat)**: `gh` is authed as `AgentDudu`, the same account that opens the PR,
+   so GitHub cannot require a second approving review — `required_approving_review_count` is 0 and the
+   human "yes" in chat is the approval record.
 4. Never force-push `main` or `develop`. Rebase only your own unpushed feature branch.
 5. Keep PRs small: one phase-slice or one feature, not the whole app.
 
@@ -273,11 +276,14 @@ gh pr create --base main --head release/0.1.0 --title "chore(release): v0.1.0" -
 # STOP — report PR url, wait for explicit approval, then merge + tag v0.1.0
 ```
 
-### 9.5 Guardrails
+### 9.5 Guardrails (in place)
 
-- Ask for `main` branch protection once (require PR, require approval, disable force push) in phase 0 —
-  makes rule 3 enforced by GitHub, not memory.
-- `gh` CLI assumed available; fall back to `git push` + web PR link if not.
+- Ruleset `protect-main` (id 25280570) on `refs/heads/main`: `update`, `deletion`, `non_fast_forward`,
+  `pull_request` (0 required reviews, squash+merge allowed). Direct push to `main` is refused by GitHub,
+  not by memory. `main` does not exist yet — it is created by the first approved release PR.
+- Repo default branch: `develop`.
+- `.gitattributes` pins `* text=auto eol=lf`.
+- `gh` CLI available and authed as `AgentDudu` (https, `repo` scope).
 - Commit `Cargo.lock` (binary crate), so CI and your machine build the same tree.
 
 ---
@@ -285,9 +291,7 @@ gh pr create --base main --head release/0.1.0 --title "chore(release): v0.1.0" -
 ## 10. Start here
 
 ```bash
-cargo new . --name rust-calc --bin
-cargo add eframe@=0.37.0
-git init -b main && git remote add origin https://github.com/AgentDudu/rust-calc.git
-git switch -c develop && git push -u origin develop   # all work lands here, never main
-# then: src/core/calc.rs + tests, phase 1, before any UI
+# done: cargo init, eframe pinned, git init + remote + develop pushed, ruleset on main
+cargo test && cargo clippy --all-targets -- -D warnings
+# next: src/core/calc.rs + tests, before any UI
 ```
