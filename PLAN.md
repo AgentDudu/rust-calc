@@ -195,7 +195,7 @@ Phase 1 is the honest milestone: the calculator exists and is proven before any 
 | Percent/equals-repeat semantics wrong | they are in the §4 spec table + parity tests, not in UI code |
 | Text clipping on narrow window | auto-shrink display font + `min_size` on window, checked in phase 6 |
 | Windows look "not Fluent" | accept as v1 limitation; egui theming gets close, not pixel-perfect |
-| accidental `main` push | branch protection on `main` + §9 approval gate; work happens on `develop`/feature branches only |
+| accidental `main` push | **unmitigated** since the ruleset was removed — discipline only; see §9.6 for the cheapest real gate |
 
 ---
 
@@ -226,11 +226,11 @@ Rules:
 1. Branch off `develop` (except `hotfix/*`, off `main`). One work item = one branch = one PR.
 2. `git push -u origin <branch>` freely for anything **not** `main`.
 3. PRs into `main`: **stop and ask you first.** No push, no merge, no tag on `main` until you say so —
-   even when CI is green and the work looks done. Treat `gh pr merge <n>`, `git push origin main`,
-   `git tag -a` as approval-gated commands.
+   even when the work looks done. Treat `gh pr merge <n>`, `git push origin main`, `git tag -a` as
+   approval-gated commands.
    Approval is **out-of-band (in chat)**: `gh` is authed as `AgentDudu`, the same account that opens the PR,
-   so GitHub cannot require a second approving review — `required_approving_review_count` is 0 and the
-   human "yes" in chat is the approval record.
+   and GitHub will not let an author approve their own PR — so no GitHub review can ever be the record here
+   unless a second identity is added (§9.6).
 4. Never force-push `main` or `develop`. Rebase only your own unpushed feature branch.
 5. Keep PRs small: one phase-slice or one feature, not the whole app.
 
@@ -280,22 +280,39 @@ gh pr create --base main --head release/0.1.0 --title "chore(release): v0.1.0" -
 # STOP — report PR url, wait for explicit approval, then merge + tag v0.1.0
 ```
 
-### 9.5 Guardrails (in place)
+### 9.5 Guardrails
 
-- Ruleset `protect-main` (id 25280570) on `refs/heads/main`: `update`, `deletion`, `non_fast_forward`,
-  `pull_request` (0 required reviews, squash+merge allowed). Direct push to `main` is refused by GitHub,
-  not by memory. `main` does not exist yet — it is created by the first approved release PR.
+- **No server-side protection on `main`** — ruleset `protect-main` was removed by the owner on purpose
+  ("I'll take the risk"). Rule 3 above is now **discipline only**: nothing on GitHub refuses
+  `git push origin main`. `main` does not exist on the remote yet, so an accidental push would *create* it.
 - Repo default branch: `develop`.
 - `.gitattributes` pins `* text=auto eol=lf`.
 - `gh` CLI available and authed as `AgentDudu` (https, `repo` scope).
 - Commit `Cargo.lock` (binary crate), so CI and your machine build the same tree.
+
+### 9.6 Restoring a real second-party gate (not in place)
+
+Verified facts, so this does not need re-researching:
+
+1. A bot **can** post an approving review: `POST /repos/{owner}/{repo}/pulls/{n}/reviews` with `event: APPROVE`.
+   Works with a GitHub App installation token or a fine-grained PAT holding *Pull requests: write*.
+   Use REST, not `gh pr review` (the GraphQL `addPullRequestReview` rejects fine-grained PATs).
+   `GITHUB_TOKEN` inside Actions **cannot** approve — "GitHub Actions is not permitted to approve pull requests".
+2. Ruleset *required reviewers* accepts **teams only**, and the team needs write access to the repo.
+   A user-owned repo has no teams, so a hard "must be approved by X" rule needs the repo moved into an org.
+3. Cheapest real gate on this personal repo: second account (or GitHub App) + `required_approving_review_count: 1`
+   on `main`; the bot posts the approval **only after you say yes in chat**. That makes the merge mechanically
+   blocked until a non-author approval exists. Cost: you create the account/app and hand over a token —
+   I cannot sign up for a GitHub identity, and scripted signup would breach the ToS.
+4. Weaker alternative with no new identity: a required status check `human-approval` that only you trigger
+   from the Actions tab. It is a real human action, but I hold `repo` scope, so I could trigger it too.
 
 ---
 
 ## 10. Start here
 
 ```bash
-# done: cargo init, eframe pinned, git init + remote + develop pushed, ruleset on main
+# done: cargo init, eframe pinned, git init + remote + develop pushed (no branch protection on main)
 cargo test && cargo clippy --all-targets -- -D warnings
 # next: src/core/calc.rs + tests, before any UI
 ```
