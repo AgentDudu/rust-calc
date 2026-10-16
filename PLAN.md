@@ -131,6 +131,10 @@ Layout, top → bottom (matches Win11 Standard):
 ```
 
 Implementation notes:
+- **eframe 0.37 API** (verified by building): implement `App::ui(&mut self, ui: &mut egui::Ui, frame: &mut Frame)`
+  — `App::update` is gone; `logic()` replaces the old `update` for pre-paint work. Panels take `&mut Ui`
+  (`CentralPanel::default().show(ui, ..)`), not `&Context`. Use `use eframe::egui;` — no separate `egui` dep,
+  so the two crates can never drift.
 - Grid: `ui.available_rect()` → 4 cols × 6 rows, each cell `Rect` from `available / (4,6)`; place buttons with
   `ui.put(rect, Button)` so they scale with the window instead of `egui::Grid` (which does not stretch).
 - Min window 320×420, default 360×560, resizable.
