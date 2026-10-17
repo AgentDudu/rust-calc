@@ -5,3 +5,4 @@ pub mod history;
 pub mod keyboard;
 pub mod keypad;
 pub mod memory_bar;
+pub mod theme;
