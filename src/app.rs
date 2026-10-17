@@ -43,13 +43,6 @@ impl CalcApp {
             }
         }
 
-        let title = format!("{} - Calculator", self.calc.display_text());
-        if title != self.title {
-            self.title = title;
-            ui.ctx()
-                .send_viewport_cmd(egui::ViewportCommand::Title(self.title.clone()));
-        }
-
         // Side panel before the others, so the bars above the keypad stop at its edge.
         if self.history_open {
             let panel = egui::Panel::right("history_panel")
@@ -74,6 +67,15 @@ impl CalcApp {
             crate::ui::display::show(ui, &self.calc);
             self.keypad_area = crate::ui::keypad::show(ui, &mut self.calc);
         });
+
+        // After the widgets: a click is applied while they draw, so a title computed before them
+        // would show the previous frame's value and, with no further input, stay there.
+        let title = format!("{} - Calculator", self.calc.display_text());
+        if title != self.title {
+            self.title = title;
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Title(self.title.clone()));
+        }
     }
 }
 
@@ -395,5 +397,113 @@ mod tests {
             app.keypad_area
         );
         assert!(app.keypad_area.max.x <= app.history_area.min.x + 1.0);
+    }
+
+    #[test]
+    fn divide_by_zero_shows_the_message_and_locks_the_keypad() {
+        let (mut app, ctx) = startup();
+        for key in ["1", "÷", "0", "="] {
+            tap(&mut app, &ctx, key);
+        }
+        assert_eq!(app.calc.display_text(), "Cannot divide by zero");
+        assert_eq!(app.title, "Cannot divide by zero - Calculator");
+        assert_eq!(app.calc.expression_text(), "1 ÷ 0 =");
+
+        for key in ["7", "+", "×"] {
+            tap(&mut app, &ctx, key);
+        }
+        assert_eq!(
+            app.calc.display_text(),
+            "Cannot divide by zero",
+            "a greyed key woke up"
+        );
+
+        tap(&mut app, &ctx, "CE");
+        assert_eq!(app.calc.display_text(), "0");
+        tap(&mut app, &ctx, "7");
+        assert_eq!(app.calc.display_text(), "7");
+    }
+
+    #[test]
+    fn c_clears_the_error_and_starts_over() {
+        let (mut app, ctx) = startup();
+        for key in ["5", "÷", "0", "="] {
+            tap(&mut app, &ctx, key);
+        }
+        assert!(app.calc.has_error());
+        tap(&mut app, &ctx, "C");
+        assert!(!app.calc.has_error());
+        assert_eq!(app.calc.expression_text(), "");
+        tap(&mut app, &ctx, "3");
+        assert_eq!(app.calc.display_text(), "3");
+    }
+
+    #[test]
+    fn an_error_freezes_the_memory_bar_except_mc() {
+        let (mut app, ctx) = startup();
+        type_text(&mut app, &ctx, "5");
+        tap_memory(&mut app, &ctx, "MS");
+        for key in ["1", "÷", "0", "="] {
+            tap(&mut app, &ctx, key);
+        }
+
+        tap_memory(&mut app, &ctx, "M+");
+        tap_memory(&mut app, &ctx, "MR");
+        assert_eq!(app.calc.memory_value(), 5.0, "M+ read an error as a number");
+        assert!(app.calc.has_error(), "a memory button cleared the error");
+
+        tap_memory(&mut app, &ctx, "MC");
+        assert!(
+            !app.calc.has_memory(),
+            "MC is the one button that stays alive"
+        );
+    }
+
+    #[test]
+    fn history_cannot_be_reused_over_an_error() {
+        let (mut app, ctx) = startup();
+        type_text(&mut app, &ctx, "2+3=");
+        press_with(&mut app, &ctx, egui::Key::H, Modifiers::COMMAND);
+        for key in ["1", "÷", "0", "="] {
+            tap(&mut app, &ctx, key);
+        }
+
+        tap_history_entry(&mut app, &ctx, 0);
+        assert!(app.calc.has_error(), "reuse went through the lockout");
+
+        tap(&mut app, &ctx, "C");
+        tap_history_entry(&mut app, &ctx, 0);
+        assert_eq!(app.calc.display_text(), "5");
+    }
+
+    #[test]
+    fn sqrt_of_a_negative_number_is_invalid_input() {
+        let (mut app, ctx) = startup();
+        for key in ["9", "±", "√x"] {
+            tap(&mut app, &ctx, key);
+        }
+        assert_eq!(app.calc.display_text(), "Invalid input");
+        tap(&mut app, &ctx, "C");
+        assert_eq!(app.calc.display_text(), "0");
+    }
+
+    #[test]
+    fn squaring_past_the_range_overflows() {
+        let (mut app, ctx) = startup();
+        tap(&mut app, &ctx, "9");
+        for _ in 0..5 {
+            tap(&mut app, &ctx, "x\u{b2}");
+        }
+        assert_eq!(app.calc.display_text(), "Overflow");
+    }
+
+    #[test]
+    fn the_keypad_stops_at_16_digits() {
+        let (mut app, ctx) = startup();
+        for _ in 0..20 {
+            tap(&mut app, &ctx, "7");
+        }
+        assert_eq!(app.calc.display_text().matches('7').count(), 16);
+        assert!(!app.calc.has_error(), "a full display is not an error");
     }
 }

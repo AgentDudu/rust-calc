@@ -74,6 +74,8 @@ pub fn show(ui: &mut Ui, calc: &mut Calculator) -> Rect {
         area.height() / ROWS.len() as f32,
     );
     let font_size = (cell.y * 0.34).clamp(12.0, 26.0);
+    // While an error is on screen Windows keeps only C and CE alive; the rest are greyed.
+    let locked = calc.has_error();
 
     for (row, keys) in ROWS.iter().enumerate() {
         for (col, (label, input)) in keys.iter().enumerate() {
@@ -86,7 +88,12 @@ pub fn show(ui: &mut Ui, calc: &mut Calculator) -> Rect {
             let button = Button::new(RichText::new(*label).size(font_size))
                 .min_size(rect.size())
                 .sense(SENSE);
-            if ui.put(rect, button).clicked() {
+            let enabled = !locked || matches!(*input, Input::Clear | Input::ClearEntry);
+            let clicked = ui
+                .add_enabled_ui(enabled, |ui| ui.put(rect, button))
+                .inner
+                .clicked();
+            if clicked {
                 calc.input(*input);
             }
         }

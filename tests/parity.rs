@@ -26,7 +26,12 @@ fn run(script: &str) -> String {
     for c in script.chars() {
         calc.input(key(c));
     }
-    calc.display_text()
+    // The table marks failures with `Error: `; the engine itself shows Windows' own wording.
+    if calc.has_error() {
+        format!("Error: {}", calc.display_text())
+    } else {
+        calc.display_text()
+    }
 }
 
 const CASES: &[(&str, &str)] = &[
@@ -125,7 +130,7 @@ fn error_locks_keypad_until_clear() {
     }
     calc.input(Input::Digit('7'));
     calc.input(Input::Add);
-    assert_eq!(calc.display_text(), "Error: Cannot divide by zero");
+    assert_eq!(calc.display_text(), "Cannot divide by zero");
     calc.input(Input::Clear);
     assert_eq!(calc.display_text(), "0");
     calc.input(Input::Digit('2'));
