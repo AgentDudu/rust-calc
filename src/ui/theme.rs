@@ -6,8 +6,11 @@
 
 use eframe::egui::{self, Color32, Stroke, Theme, Visuals};
 
-const ACCENT_LIGHT: Color32 = Color32::from_rgb(0x00, 0x5F, 0xB8);
+// Icon palette — shared by `icon()` below and `assets/icon.ico` (tools/make_icon.py).
+pub const ACCENT_LIGHT: Color32 = Color32::from_rgb(0x00, 0x5F, 0xB8);
 const ACCENT_DARK: Color32 = Color32::from_rgb(0x4C, 0xC2, 0xFF);
+pub const DISPLAY: Color32 = Color32::from_rgb(0x1B, 0x1B, 0x1B);
+pub const BARS: Color32 = Color32::from_rgb(0xCF, 0xE4, 0xFA);
 
 /// Installs both palettes once. egui then swaps them on its own when the OS theme changes,
 /// so nothing here has to run per frame.
@@ -103,14 +106,12 @@ pub fn icon() -> egui::IconData {
     for y in 0..SIZE {
         for x in 0..SIZE {
             let pixel = if !inside_rounded(x, y, SIZE, RADIUS) {
-                [0, 0, 0, 0]
-            } else if is_glyph(x, y) {
-                [0xFF, 0xFF, 0xFF, 0xFF]
+                Color32::TRANSPARENT
             } else {
-                [0x00, 0x78, 0xD4, 0xFF]
+                glyph(x, y)
             };
             let at = ((y * SIZE + x) * 4) as usize;
-            rgba[at..at + 4].copy_from_slice(&pixel);
+            rgba[at..at + 4].copy_from_slice(&pixel.to_array());
         }
     }
     egui::IconData {
@@ -121,32 +122,30 @@ pub fn icon() -> egui::IconData {
 }
 
 fn inside_rounded(x: u32, y: u32, size: u32, radius: u32) -> bool {
-    let corners = [
-        (radius, radius),
-        (size - radius - 1, radius),
-        (radius, size - radius - 1),
-        (size - radius - 1, size - radius - 1),
-    ];
-    // Outside a corner square only if it is also outside that corner's circle.
-    for (cx, cy) in corners {
-        let in_corner_box =
-            (x < radius || x > size - radius - 1) && (y < radius || y > size - radius - 1);
-        if !in_corner_box {
-            continue;
-        }
-        let (dx, dy) = (x as i32 - cx as i32, y as i32 - cy as i32);
-        if dx * dx + dy * dy > (radius * radius) as i32 {
-            return false;
-        }
-    }
-    true
+    let (left, right) = (x < radius, x > size - radius - 1);
+    let (top, bottom) = (y < radius, y > size - radius - 1);
+    // Only the corner this pixel actually sits in gets a circle test — testing all four
+    // would reject every pixel in a corner square, which reads as a chamfer, not a radius.
+    let corner = match (left, right, top, bottom) {
+        (true, _, true, _) => (radius, radius),
+        (_, true, true, _) => (size - radius - 1, radius),
+        (true, _, _, true) => (radius, size - radius - 1),
+        (_, true, _, true) => (size - radius - 1, size - radius - 1),
+        _ => return true,
+    };
+    let (dx, dy) = (x as i32 - corner.0 as i32, y as i32 - corner.1 as i32);
+    dx * dx + dy * dy <= (radius * radius) as i32
 }
 
 /// A display bar over an equals sign: readable at 16 px, which is all a taskbar icon has to be.
-fn is_glyph(x: u32, y: u32) -> bool {
-    (7..=10).contains(&y) && (7..=24).contains(&x)
-        || (15..=17).contains(&y) && (10..=21).contains(&x)
-        || (21..=23).contains(&y) && (10..=21).contains(&x)
+fn glyph(x: u32, y: u32) -> Color32 {
+    if (7..=10).contains(&y) && (7..=24).contains(&x) {
+        DISPLAY
+    } else if (10..=21).contains(&x) && ((15..=17).contains(&y) || (21..=23).contains(&y)) {
+        BARS
+    } else {
+        ACCENT_LIGHT
+    }
 }
 
 #[cfg(test)]
@@ -206,10 +205,76 @@ mod tests {
         assert_eq!(icon.rgba.len(), (icon.width * icon.height * 4) as usize);
         let alpha = |x: u32, y: u32| icon.rgba[((y * icon.width + x) * 4 + 3) as usize];
         assert_eq!(alpha(0, 0), 0, "corner should be cut");
+        assert_eq!(
+            alpha(4, 4),
+            255,
+            "a rounded corner keeps the pixel beside it"
+        );
         assert_eq!(alpha(16, 16), 255, "centre should be solid");
         assert_eq!(alpha(16, 8), 255);
-        let glyph = |x: u32, y: u32| icon.rgba[((y * icon.width + x) * 4) as usize];
-        assert_eq!(glyph(10, 8), 0xFF, "the display bar should be white");
-        assert_ne!(glyph(16, 30), 0xFF, "the tile body should not be white");
+        let colour = |x: u32, y: u32| {
+            let at = ((y * icon.width + x) * 4) as usize;
+            Color32::from_rgba_premultiplied(
+                icon.rgba[at],
+                icon.rgba[at + 1],
+                icon.rgba[at + 2],
+                icon.rgba[at + 3],
+            )
+        };
+        assert_eq!(colour(10, 8), DISPLAY, "the display band");
+        assert_eq!(colour(15, 16), BARS, "the equals bars");
+        assert_eq!(colour(4, 4), ACCENT_LIGHT, "the tile");
+    }
+
+    /// The exe's file icon is a separate asset from the drawn one, so nothing stops it drifting.
+    /// This is the drift check: the sizes Explorer asks for, and the colours `icon()` paints.
+    #[test]
+    fn the_file_icon_matches_the_drawn_one() {
+        let ico = std::fs::read("assets/icon.ico")
+            .expect("missing assets/icon.ico - run tools/make_icon.py");
+        assert_eq!(&ico[0..4], &[0, 0, 1, 0], "assets/icon.ico is not an ICO");
+        let count = u16::from_le_bytes([ico[4], ico[5]]) as usize;
+
+        let mut sizes = Vec::new();
+        let mut thirty_two = None;
+        for i in 0..count {
+            let entry = &ico[6 + i * 16..][..16];
+            // 0 in the width byte is how an ICO spells 256.
+            let size = if entry[0] == 0 {
+                256
+            } else {
+                entry[0] as usize
+            };
+            let len = u32::from_le_bytes(entry[8..12].try_into().unwrap()) as usize;
+            let at = u32::from_le_bytes(entry[12..16].try_into().unwrap()) as usize;
+            if size == 32 {
+                thirty_two = Some((at, len));
+            }
+            sizes.push(size);
+        }
+        sizes.sort_unstable();
+        assert_eq!(
+            sizes,
+            [16, 24, 32, 48, 256],
+            "taskbar, small, window, large, Explorer"
+        );
+
+        let (at, len) = thirty_two.expect("a 32 px entry");
+        assert_eq!(
+            &ico[at..at + 4],
+            &[40, 0, 0, 0],
+            "expected a 32 bpp BMP entry"
+        );
+        let pixels = &ico[at + 40..at + len]; // bottom-up BGRA
+        assert_eq!(pixels.len() % 4, 0, "whole BGRA pixels");
+        let has = |colour: Color32| {
+            let c = colour.to_array();
+            (0..pixels.len())
+                .step_by(4)
+                .any(|i| [pixels[i + 2], pixels[i + 1], pixels[i]] == [c[0], c[1], c[2]])
+        };
+        assert!(has(ACCENT_LIGHT), "tile colour missing from the .ico");
+        assert!(has(DISPLAY), "display band colour missing from the .ico");
+        assert!(has(BARS), "equals bars colour missing from the .ico");
     }
 }
