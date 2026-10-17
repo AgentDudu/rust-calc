@@ -12,10 +12,51 @@
 use eframe::egui::{Event, Key, Ui};
 use rust_calc::core::{Calculator, Input};
 
-pub fn poll(ui: &mut Ui, calc: &mut Calculator) {
-    let inputs = ui.input(|i| i.events.iter().flat_map(inputs_for).collect::<Vec<Input>>());
+/// Panel commands — they change the window, not the calculation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Command {
+    ToggleHistory,
+    ClearHistory,
+}
+
+/// Applies key presses to the calculator and returns the commands the shell must handle.
+pub fn poll(ui: &mut Ui, calc: &mut Calculator) -> Vec<Command> {
+    let mut commands = Vec::new();
+    let inputs = ui.input(|i| {
+        let mut inputs = Vec::new();
+        for event in i.events.iter() {
+            inputs.extend(inputs_for(event));
+            if let Some(command) = command_for(event) {
+                commands.push(command);
+            }
+        }
+        inputs
+    });
     for input in inputs {
         calc.input(input);
+    }
+    commands
+}
+
+/// `Ctrl` on Windows/Linux, `Cmd` on macOS — `Modifiers::command` is already the right one.
+/// No text event arrives with the modifier held, so these cannot double-fire with `Event::Text`.
+fn command_for(event: &Event) -> Option<Command> {
+    let Event::Key {
+        key,
+        pressed: true,
+        modifiers,
+        ..
+    } = event
+    else {
+        return None;
+    };
+    if !modifiers.command {
+        return None;
+    }
+    match key {
+        Key::H => Some(Command::ToggleHistory),
+        Key::D => Some(Command::ClearHistory),
+        _ => None,
     }
 }
 
@@ -90,5 +131,47 @@ mod tests {
     fn unrelated_keys_are_ignored() {
         assert!(inputs_for(&key(Key::Tab)).is_empty());
         assert!(inputs_for(&Event::PointerMoved(Default::default())).is_empty());
+    }
+
+    fn key_with(key: Key, modifiers: Modifiers) -> Event {
+        Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        }
+    }
+
+    #[test]
+    fn panel_shortcuts_become_commands() {
+        assert_eq!(
+            command_for(&key_with(Key::H, Modifiers::COMMAND)),
+            Some(Command::ToggleHistory)
+        );
+        assert_eq!(
+            command_for(&key_with(Key::D, Modifiers::COMMAND)),
+            Some(Command::ClearHistory)
+        );
+    }
+
+    #[test]
+    fn a_command_needs_the_modifier_and_a_press() {
+        assert_eq!(command_for(&key_with(Key::H, Modifiers::NONE)), None);
+        assert_eq!(command_for(&key_with(Key::H, Modifiers::ALT)), None);
+        let released = Event::Key {
+            key: Key::H,
+            physical_key: None,
+            pressed: false,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        };
+        assert_eq!(command_for(&released), None);
+    }
+
+    #[test]
+    fn a_shortcut_is_not_also_a_calculator_input() {
+        assert!(inputs_for(&key_with(Key::H, Modifiers::COMMAND)).is_empty());
+        assert!(inputs_for(&key_with(Key::D, Modifiers::COMMAND)).is_empty());
     }
 }

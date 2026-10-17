@@ -44,10 +44,12 @@ impl Input {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
     pub expression: String,
+    /// Grouped for the panel; `value` is what clicking the entry reuses.
     pub result: String,
+    pub value: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +67,8 @@ pub struct Calculator {
     /// Next digit replaces the display instead of appending to it.
     fresh: bool,
     memory: f64,
+    /// Windows distinguishes an empty memory from a memory holding zero.
+    memory_set: bool,
     history: Vec<Entry>,
     error: Option<CalcError>,
 }
@@ -86,6 +90,7 @@ impl Calculator {
             last_op: None,
             fresh: true,
             memory: 0.0,
+            memory_set: false,
             history: Vec::new(),
             error: None,
         }
@@ -104,6 +109,7 @@ impl Calculator {
             Clear => {
                 *self = Calculator {
                     memory: self.memory,
+                    memory_set: self.memory_set,
                     history: std::mem::take(&mut self.history),
                     ..Calculator::new()
                 };
@@ -196,26 +202,36 @@ impl Calculator {
         self.memory
     }
 
+    /// Whether MC / MR / M- have anything to act on.
+    pub fn has_memory(&self) -> bool {
+        self.memory_set
+    }
+
     pub fn memory_store(&mut self) {
         self.memory = self.value();
+        self.memory_set = true;
     }
 
     pub fn memory_recall(&mut self) {
-        if self.error.is_none() {
+        if self.error.is_none() && self.memory_set {
             self.set_value(self.memory);
         }
     }
 
     pub fn memory_add(&mut self) {
         self.memory += self.value();
+        self.memory_set = true;
     }
 
     pub fn memory_subtract(&mut self) {
-        self.memory -= self.value();
+        if self.memory_set {
+            self.memory -= self.value();
+        }
     }
 
     pub fn memory_clear(&mut self) {
         self.memory = 0.0;
+        self.memory_set = false;
     }
 
     // --------------------------------------------------------------- history
@@ -223,6 +239,21 @@ impl Calculator {
     /// Newest first.
     pub fn history(&self) -> &[Entry] {
         &self.history
+    }
+
+    pub fn clear_history(&mut self) {
+        self.history.clear();
+    }
+
+    /// Put a past result back on the display, as if it had just been typed.
+    pub fn use_history(&mut self, index: usize) {
+        if self.error.is_some() {
+            return;
+        }
+        if let Some(entry) = self.history.get(index) {
+            let value = entry.value;
+            self.set_value(value);
+        }
     }
 
     // --------------------------------------------------------------- private
@@ -356,6 +387,7 @@ impl Calculator {
             Entry {
                 expression,
                 result: fmt::format_display(result),
+                value: result,
             },
         );
         self.history.truncate(HISTORY_CAP);
@@ -596,6 +628,64 @@ mod tests {
         assert_eq!(calc.display_text(), "12");
         calc.memory_clear();
         assert_eq!(calc.memory_value(), 0.0);
+    }
+
+    #[test]
+    fn an_empty_memory_is_not_a_memory_holding_zero() {
+        let mut calc = press(&digits("0"));
+        assert!(!calc.has_memory());
+        calc.memory_store();
+        assert!(calc.has_memory(), "storing zero still fills the memory");
+        calc.input(Clear);
+        assert!(calc.has_memory(), "C keeps the memory, indicator included");
+        calc.memory_clear();
+        assert!(!calc.has_memory());
+    }
+
+    #[test]
+    fn m_minus_does_nothing_on_an_empty_memory() {
+        let mut calc = press(&digits("5"));
+        calc.memory_subtract();
+        assert_eq!(calc.memory_value(), 0.0);
+        assert!(!calc.has_memory());
+    }
+
+    #[test]
+    fn a_history_entry_can_be_reused_as_input() {
+        let mut calc = press(&digits("2+3="));
+        assert_eq!(calc.history()[0].value, 5.0);
+        calc.use_history(0);
+        assert_eq!(calc.display_text(), "5");
+        // Reuse is fresh: the next digit starts a new number instead of appending.
+        calc.input(Digit('7'));
+        assert_eq!(calc.display_text(), "7");
+    }
+
+    #[test]
+    fn reusing_a_missing_history_entry_changes_nothing() {
+        let mut calc = press(&digits("2+3="));
+        calc.use_history(7);
+        assert_eq!(calc.display_text(), "5");
+    }
+
+    #[test]
+    fn history_can_be_cleared_and_memory_survives_it() {
+        let mut calc = press(&digits("2+3="));
+        calc.memory_store();
+        calc.clear_history();
+        assert!(calc.history().is_empty());
+        assert_eq!(calc.memory_value(), 5.0);
+    }
+
+    #[test]
+    fn reuse_cannot_hide_an_error() {
+        let mut calc = press(&digits("2+3=1/0="));
+        assert!(calc.has_error());
+        calc.use_history(0);
+        assert!(calc.has_error(), "reuse must not clear the error");
+        calc.input(Clear);
+        calc.use_history(0);
+        assert_eq!(calc.display_text(), "5");
     }
 
     #[test]
