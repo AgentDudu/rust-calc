@@ -263,6 +263,12 @@ the OS flips and no per-frame work is needed.
 `main` = `develop` = `840c63b`, annotated tag `v0.1.0` pushed, `release/0.1.0` kept as provenance (deleting a
 remote ref is blocked by the harness safety net). Nothing guards `main` yet — see §9.7 for the gate that would.
 
+**GitHub Release (done).** `releases/tag/v0.1.0` carries `rust-calc.exe`, 8,386,048 B, sha256
+`e37925f3…d127` in the notes. The asset was downloaded back and re-hashed — same digest, so the file on the
+release is the file that was built. Notes state the static-CRT requirement, the SmartScreen prompt (the exe is
+unsigned), and the `%2` = square-root quirk. `gh release create --target` means *commitish*, not architecture;
+passing `x64-windows` there is a 422.
+
 **egui 0.37 API notes** (found the hard way, phase 2 — re-read before touching the UI layer):
 
 - `Context::run` is gone: use `ctx.run_ui(raw_input, |ui| ...) -> FullOutput`, then `.drop_without_applying_deltas()`.
@@ -467,6 +473,28 @@ The second identity exists: `pigeion` / `pigeion-bot[bot]`, a user-owned GitHub 
 | merge | **still the human account** — GitHub rejects a self-approval by the author, and the bot is not a collaborator |
 | token lifetime | installation tokens expire in 1 h; mint with `POST /app/installations/{id}/access_tokens` using a JWT signed with the App's private key (RSA-PKCS1v15-SHA256, doable with `openssl dgst`) |
 
+**Status 2026-10-17:** the installation token is **no longer in the keyring** (`gh auth token --hostname
+github.com.app.pi-release-bot` returns nothing), so the bot cannot approve right now. That is why `main`'s
+protection runs with `enforce_admins: false` — with admins forced and no second identity able to approve,
+`main` would be unmergeable. Re-mint the token, then flip `enforce_admins` to true and the gate becomes real
+for everyone including the author.
+
+### 9.8 What protects `main` (set 2026-10-17)
+
+Default branch flipped `develop` → `main`. `gh api repos/…/branches/main/protection` reads back:
+
+| rule | value | what it stops |
+|---|---|---|
+| `required_approving_review_count` | 1 (stale reviews dismissed) | merging your own change into the release branch unreviewed |
+| `allow_force_pushes` | false | rewriting release history |
+| `allow_deletions` | false | `git push origin --delete main` |
+| `required_status_checks.strict` | false | nothing — there is no CI yet, and requiring a check that never runs locks every merge |
+| `enforce_admins` | **false** | nothing for admins — see §9.7 for why |
+
+**Not proven:** that the rule blocks a merge. Proving it needs a non-admin identity, and the only one (the bot)
+is out of tokens. As admin the author can bypass it today. `develop` is deliberately unprotected — every phase
+merged there, and a gate on the working branch would only slow the work down.
+
 **What it does and does not buy.** It makes an approval *possible* from a non-author identity, which is what a
 required-review rule needs. It does not make the approval mean anything on its own — the gate is only real if
 the bot is told to approve after a human says yes. `main` is the branch to put the rule on; `develop` stays
@@ -477,10 +505,13 @@ open because every phase merged there.
 ## 10. Start here
 
 ```bash
-# done: seven phases + the exe icon + v0.1.0 cut to main (main == develop == 840c63b, tag v0.1.0)
+# done: seven phases + exe icon + v0.1.0 cut + GitHub Release + pedantic gate
+# default branch is now main; main is protected (1 review, no force-push, no delete)
+# release: https://github.com/AgentDudu/rust-calc/releases/tag/v0.1.0 — rust-calc.exe attached, sha256 in the notes
 cargo test && cargo clippy --all-targets -- -D warnings -D clippy::pedantic
 # artifact: target/x86_64-pc-windows-msvc/release/rust-calc.exe — 7.99 MiB, no console, no CRT imports, own icon
-# next: nothing in the plan is open. Optional: a GitHub Release with the exe attached, and a branch rule on main
+# next: nothing in the plan is open. To make main's protection bite, see §9.7 (re-mint the bot token, then
+# flip enforce_admins to true).
 ```
 
 ---
