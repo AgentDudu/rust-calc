@@ -179,8 +179,22 @@ Each phase ends green: `cargo test` + `cargo clippy -- -D warnings` + manual run
 Phase 1 is the honest milestone: the calculator exists and is proven before any pixels.
 
 **Landed:** phase 0 (scaffold, PR-less), phase 1 (engine + parity, PR #1), phase 2 (keypad + display, PR #2),
-phase 3 (keyboard + focus, PR #3), phase 4 (memory bar + history panel, PR #4) and phase 5 (error + edge
-states, PR #5) are on `develop`.
+phase 3 (keyboard + focus, PR #3), phase 4 (memory bar + history panel, PR #4), phase 5 (error + edge
+states, PR #5) and phase 6 (theme + icon, PR #7) are on `develop`. Left: phase 7, the release build.
+
+**Phase 6 notes.** Default is `ThemePreference::System`, which egui already follows — Windows' calculator
+follows the OS theme, so that is parity, and a top-bar button cycles System → Light → Dark for anyone who
+wants to force one. Palettes are installed once with `set_visuals_of(Theme, ..)`, so egui swaps them when
+the OS flips and no per-frame work is needed.
+- **`extreme_bg_color` must equal `panel_fill`, not `window_fill`.** eframe clears the window with it and
+  every edge of this app is a panel, so any other value flashes a seam while resizing. A test asserts it
+  after it caught the light palette disagreeing with itself.
+- **egui 0.37 dims a disabled widget with paint alpha, not a `disabled` palette colour** — there is no
+  `Widgets::disabled` field. So a palette cannot be checked for "is greyed still greyed"; only the paint
+  list can say, and `a_dead_key_is_painted_dimmer_than_a_live_one` now runs it against both palettes.
+- **Icon deviation:** PLAN said `.ico`. The window icon is 32×32 RGBA drawn in code — no image crate, no
+  binary blob, no anti-aliasing. The *executable file's* icon in Explorer is untouched and still needs a
+  real `.ico` resource (a build script or `winres`) if you want one; the window and taskbar icon are fine.
 
 **egui 0.37 API notes** (found the hard way, phase 2 — re-read before touching the UI layer):
 
@@ -235,7 +249,9 @@ states, PR #5) are on `develop`.
   scaled DPI. That retires the phase 3 caveat — real OS keystrokes match the `Event::Text`/`Event::Key`
   shapes egui-winit was read to emit, which is the only way that gap could have been closed.
   Still unproven by mouse: the history panel's own **Clear** button (only `Ctrl+D`, which calls the same
-  engine method, has been exercised).
+  engine method, has been exercised). Phase 6 adds three more eyeball items: the palettes actually look
+  Fluent rather than merely being different numbers, the **Theme** button still fits at the 320 px minimum
+  width (it is new since the last resize pass), and the drawn icon reads as a calculator at taskbar size.
   Phase 4 adds mouse-only paths proven headlessly (memory buttons, history toggle, entry reuse); the panel's
   own Clear button is covered only through `Ctrl+D`, which calls the same engine method.
   Phase 5's lockout is proven by clicks being ignored *and* from the paint list:
