@@ -166,10 +166,11 @@ impl Calculator {
 
     // ---------------------------------------------------------------- display
 
-    /// What the display line shows, separators included.
+    /// What the display line shows, separators included. An error shows Windows' own wording,
+    /// with no prefix — the parity harness adds its `Error: ` marker, the screen must not.
     pub fn display_text(&self) -> String {
         match self.error {
-            Some(error) => format!("Error: {}", error.message()),
+            Some(error) => error.message().to_string(),
             None => fmt::format_display(self.value()),
         }
     }
@@ -312,14 +313,23 @@ impl Calculator {
             self.pending = None;
             self.acc = None;
             self.last_op = Some((op, v));
+            let expr = expression(acc, op, v);
             match eval::apply(acc, op, v) {
-                Ok(result) => (result, expression(acc, op, v)),
-                Err(error) => return self.fail(error),
+                Ok(result) => (result, expr),
+                // Windows keeps the sum on the expression line while the error sits below it.
+                Err(error) => {
+                    self.last_expression = Some(expr);
+                    return self.fail(error);
+                }
             }
         } else if let Some((op, operand)) = self.last_op {
+            let expr = expression(v, op, operand);
             match eval::apply(v, op, operand) {
-                Ok(result) => (result, expression(v, op, operand)),
-                Err(error) => return self.fail(error),
+                Ok(result) => (result, expr),
+                Err(error) => {
+                    self.last_expression = Some(expr);
+                    return self.fail(error);
+                }
             }
         } else {
             (v, format!("{} =", fmt::format_display(v)))
@@ -525,34 +535,55 @@ mod tests {
         assert_eq!(display_of(&digits("9-16=")), "-7");
         assert_eq!(
             display_of(&[Digit('9'), Sub, Digit('1'), Digit('6'), Equals, Sqrt]),
-            "Error: Invalid input"
+            "Invalid input"
         );
     }
 
     #[test]
     fn divide_by_zero_locks_the_keypad() {
         let mut calc = press(&digits("1/0="));
-        assert_eq!(calc.display_text(), "Error: Cannot divide by zero");
+        assert_eq!(calc.display_text(), "Cannot divide by zero");
         calc.input(Digit('7'));
-        assert_eq!(calc.display_text(), "Error: Cannot divide by zero");
+        assert_eq!(calc.display_text(), "Cannot divide by zero");
         calc.input(ClearEntry);
         assert_eq!(calc.display_text(), "0");
     }
 
     #[test]
+    fn an_error_keeps_the_sum_that_caused_it() {
+        let calc = press(&digits("1/0="));
+        assert_eq!(calc.expression_text(), "1 ÷ 0 =");
+        // Windows shows the message alone; the `Error: ` marker belongs to the parity table.
+        assert_eq!(calc.display_text(), "Cannot divide by zero");
+    }
+
+    #[test]
+    fn equals_repeat_cannot_fire_during_a_lockout() {
+        let mut script = digits("1/0=");
+        script.push(Equals);
+        let calc = press(&script);
+        assert_eq!(calc.display_text(), "Cannot divide by zero");
+    }
+
+    #[test]
+    fn equals_repeat_can_overflow() {
+        // 9 × 9, then repeat the ×9 step until the result leaves the range.
+        let mut script = digits("9*9");
+        for _ in 0..16 {
+            script.push(Equals);
+        }
+        let calc = press(&script);
+        assert_eq!(calc.display_text(), "Overflow");
+    }
+
+    #[test]
     fn inverse_of_zero_is_divide_by_zero() {
-        assert_eq!(
-            display_of(&[Digit('0'), Inv]),
-            "Error: Cannot divide by zero"
-        );
+        assert_eq!(display_of(&[Digit('0'), Inv]), "Cannot divide by zero");
     }
 
     #[test]
     fn results_at_1e16_overflow() {
-        assert_eq!(
-            display_of(&digits("9999999999999999+1=")),
-            "Error: Overflow"
-        );
+        assert_eq!(display_of(&digits("9999999999999999+1=")), "Overflow");
     }
 
     #[test]

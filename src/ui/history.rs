@@ -44,31 +44,35 @@ pub fn show(ui: &mut Ui, calc: &mut Calculator) -> Rect {
     });
 
     let list = Rect::from_min_max(full.min + Vec2::new(0.0, HEADER), full.max);
+    // Reuse would overwrite the error, so the list waits until the keypad is live again.
+    let locked = calc.has_error();
     ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
             if calc.history().is_empty() {
                 ui.label(RichText::new("There's nothing here.").weak().size(12.0));
             }
-            for (index, entry) in calc.history().iter().enumerate() {
-                // The row rect comes back from egui, so it stays right once the list scrolls.
-                let rect = ui
-                    .allocate_ui_with_layout(
-                        Vec2::new(list.width(), ROW_H),
-                        Layout::top_down(Align::Min),
-                        |ui| ui.max_rect(),
-                    )
-                    .inner;
-                let button = Button::new((
-                    RichText::new(&entry.expression).weak().size(11.0),
-                    RichText::new(&entry.result).strong().size(15.0),
-                ))
-                .min_size(rect.size() - Vec2::new(4.0, 4.0))
-                .sense(SENSE);
-                if ui.put(rect.shrink(2.0), button).clicked() {
-                    clicked = Some(index);
+            ui.add_enabled_ui(!locked, |ui| {
+                for (index, entry) in calc.history().iter().enumerate() {
+                    // The row rect comes back from egui, so it stays right once the list scrolls.
+                    let rect = ui
+                        .allocate_ui_with_layout(
+                            Vec2::new(list.width(), ROW_H),
+                            Layout::top_down(Align::Min),
+                            |ui| ui.max_rect(),
+                        )
+                        .inner;
+                    let button = Button::new((
+                        RichText::new(&entry.expression).weak().size(11.0),
+                        RichText::new(&entry.result).strong().size(15.0),
+                    ))
+                    .min_size(rect.size() - Vec2::new(4.0, 4.0))
+                    .sense(SENSE);
+                    if ui.put(rect.shrink(2.0), button).clicked() {
+                        clicked = Some(index);
+                    }
                 }
-            }
+            });
         });
 
     if clear {

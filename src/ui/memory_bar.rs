@@ -27,6 +27,8 @@ pub fn button_center(area: Rect, label: &str) -> Option<Pos2> {
 pub fn show(ui: &mut Ui, calc: &mut Calculator) -> Rect {
     let area = Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), HEIGHT));
     let has_memory = calc.has_memory();
+    // Every memory op except MC reads the display, and during an error the display is a sentence.
+    let locked = calc.has_error();
 
     // The child ui only reserves the strip; the widgets are placed at explicit rects.
     ui.allocate_ui_with_layout(area.size(), Layout::top_down(Align::Min), |ui| {
@@ -38,7 +40,8 @@ pub fn show(ui: &mut Ui, calc: &mut Calculator) -> Rect {
             let button = Button::new(RichText::new(*label).size(13.0))
                 .min_size(rect.size())
                 .sense(SENSE);
-            let enabled = has_memory || !NEEDS_MEMORY[index];
+            let enabled = !locked || *label == "MC";
+            let enabled = enabled && (has_memory || !NEEDS_MEMORY[index]);
             let clicked = ui
                 .add_enabled_ui(enabled, |ui| ui.put(rect, button))
                 .inner
