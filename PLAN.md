@@ -99,6 +99,9 @@ State rules (this table **is** the spec — implement exactly, then test each ro
 | `CE` | `ClearEntry` | display → `0`, keep `acc`/`pending` |
 | `C` / `Esc` | `Clear` | full reset, memory + history survive |
 | `⌫` | `Backspace` | delete last char; empty → `0` |
+
+> `Error: ` is the parity table's marker only. The screen shows Windows' wording alone
+> (`Cannot divide by zero`), with the failed sum left on the expression line above it.
 | `±` / `F9` | `Negate` | flip sign of display (not of `acc`) |
 
 Display formatting (`fmt.rs`):
@@ -176,7 +179,8 @@ Each phase ends green: `cargo test` + `cargo clippy -- -D warnings` + manual run
 Phase 1 is the honest milestone: the calculator exists and is proven before any pixels.
 
 **Landed:** phase 0 (scaffold, PR-less), phase 1 (engine + parity, PR #1), phase 2 (keypad + display, PR #2),
-phase 3 (keyboard + focus, PR #3) and phase 4 (memory bar + history panel, PR #4) are on `develop`.
+phase 3 (keyboard + focus, PR #3), phase 4 (memory bar + history panel, PR #4) and phase 5 (error + edge
+states, PR #5) are on `develop`.
 
 **egui 0.37 API notes** (found the hard way, phase 2 — re-read before touching the UI layer):
 
@@ -203,6 +207,13 @@ phase 3 (keyboard + focus, PR #3) and phase 4 (memory bar + history panel, PR #4
 - Layout-for-tests pattern (keypad, memory bar, history list): `show` returns the `Rect` it drew into and a
   `#[cfg(test)]` helper maps label/index → click point with the same arithmetic. Any new bar needs both, or
   its clicks are unprovable.
+- **Error-state rules (phase 5):** the lockout is drawn, not only enforced — keypad greys everything but
+  `C`/`CE`, the memory bar keeps `MC` (MR/M+/M-/MS read a display that is a sentence), history entries grey
+  so a past result cannot overwrite the error. The engine ignores the same inputs anyway; the greying is
+  for the user. A failed `=` keeps its sum on the expression line (`1 ÷ 0 =` above the message).
+- **Anything derived from the display goes after the widgets.** The title bar was computed before the
+  panels, and a click is applied *while* they draw: it showed the previous frame's value and, with no
+  further input, egui never repainted to correct it.
 - Engine note: `C` rebuilds `Calculator` keeping memory and history. A new persistent field must be added
   to that `Calculator { .. }` literal or `C` silently resets it — `memory_set` broke exactly that way.
 
@@ -222,6 +233,7 @@ phase 3 (keyboard + focus, PR #3) and phase 4 (memory bar + history panel, PR #4
   Type into the window once per phase; the title bar shows what the app received.
   Phase 4 adds mouse-only paths proven headlessly (memory buttons, history toggle, entry reuse); the panel's
   own Clear button is covered only through `Ctrl+D`, which calls the same engine method.
+  Phase 5's lockout is proven by clicks being ignored — nothing checks that a greyed button *renders* dimmer.
 - No UI snapshot tests in v1 — egui screenshot harness costs more than it returns for 20 buttons.
 
 ---
