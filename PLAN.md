@@ -228,9 +228,14 @@ states, PR #5) are on `develop`.
 - **Property** (cheap, no new dep — hand-rolled loop): display string always parses back to a finite `f64`;
   `Negate(Negate(x)) == x`; no input sequence panics (fuzz digits/ops with `proptest` only if wanted later).
 - **Manual checklist**: keyboard-only session, resize at each phase, DPI 125%/150%, memory across many ops.
-  Phase 3's keystrokes are proven against the `Event::Text`/`Event::Key` shapes egui-winit emits, **not**
-  against real OS keystrokes — injecting them needs foreground focus, which the harness could not take.
-  Type into the window once per phase; the title bar shows what the app received.
+  **Run by a human on 2026-10-17, all six items passed:** typed `12+7=` → `19` in the display and in the
+  title; `Esc`/`⌫`/`F9` all worked and synced the title; `Ctrl+H` toggled history, `Ctrl+D` cleared it,
+  and `Ctrl+H` did *not* type an `h` into the calculator; after `1÷0=` every key but `C`/`CE` looked greyer
+  and did not respond; no clipped text at ~320 px or ~1200 px; text readable and buttons unoverlapped at
+  scaled DPI. That retires the phase 3 caveat — real OS keystrokes match the `Event::Text`/`Event::Key`
+  shapes egui-winit was read to emit, which is the only way that gap could have been closed.
+  Still unproven by mouse: the history panel's own **Clear** button (only `Ctrl+D`, which calls the same
+  engine method, has been exercised).
   Phase 4 adds mouse-only paths proven headlessly (memory buttons, history toggle, entry reuse); the panel's
   own Clear button is covered only through `Ctrl+D`, which calls the same engine method.
   Phase 5's lockout is proven by clicks being ignored *and* from the paint list:
