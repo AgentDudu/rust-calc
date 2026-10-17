@@ -16,6 +16,7 @@ pub struct CalcApp {
     memory_area: egui::Rect,
     history_area: egui::Rect,
     history_toggle: egui::Rect,
+    theme_toggle: egui::Rect,
 }
 
 impl Default for CalcApp {
@@ -28,6 +29,7 @@ impl Default for CalcApp {
             memory_area: egui::Rect::NOTHING,
             history_area: egui::Rect::NOTHING,
             history_toggle: egui::Rect::NOTHING,
+            theme_toggle: egui::Rect::NOTHING,
         }
     }
 }
@@ -59,6 +61,18 @@ impl CalcApp {
                 if toggle.clicked() {
                     self.history_open = !self.history_open;
                 }
+                ui.separator();
+                // egui follows the OS theme by default; this is the escape hatch.
+                let preference = ui.ctx().options(|options| options.theme_preference);
+                let theme_toggle = ui
+                    .button(crate::ui::theme::label(preference))
+                    .on_hover_text("Theme: follow the system, or force light or dark");
+                self.theme_toggle = theme_toggle.rect;
+                if theme_toggle.clicked() {
+                    let next = crate::ui::theme::cycle(preference);
+                    ui.ctx()
+                        .options_mut(|options| options.theme_preference = next);
+                }
             });
             self.memory_area = crate::ui::memory_bar::show(ui, &mut self.calc);
         });
@@ -88,7 +102,7 @@ impl eframe::App for CalcApp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::{history, keypad, memory_bar};
+    use crate::ui::{history, keypad, memory_bar, theme};
     use eframe::egui::{self, Context, Event, Modifiers, Pos2, RawInput, Rect, Vec2};
 
     const CLIENT: Vec2 = egui::vec2(360.0, 560.0);
@@ -342,6 +356,27 @@ mod tests {
     }
 
     #[test]
+    fn the_theme_button_cycles_through_every_preference() {
+        let (mut app, ctx) = startup();
+        let start = ctx.options(|options| options.theme_preference);
+        let button = app.theme_toggle.center();
+        tap_pos(&mut app, &ctx, button);
+        assert_eq!(
+            ctx.options(|options| options.theme_preference),
+            theme::cycle(start),
+            "the theme button did nothing"
+        );
+        for _ in 0..2 {
+            tap_pos(&mut app, &ctx, button);
+        }
+        assert_eq!(
+            ctx.options(|options| options.theme_preference),
+            start,
+            "three clicks should land back on the first one"
+        );
+    }
+
+    #[test]
     fn the_history_button_toggles_the_panel_without_a_keyboard() {
         let (mut app, ctx) = startup();
         let toggle = app.history_toggle.center();
@@ -380,10 +415,13 @@ mod tests {
         let (app, _ctx) = startup();
         let client = Rect::from_min_size(Pos2::ZERO, CLIENT);
         assert!(
-            client.contains_rect(app.memory_area) && client.contains_rect(app.history_toggle),
-            "top bar outside the window: {:?} {:?}",
+            client.contains_rect(app.memory_area)
+                && client.contains_rect(app.history_toggle)
+                && client.contains_rect(app.theme_toggle),
+            "top bar outside the window: {:?} {:?} {:?}",
             app.memory_area,
-            app.history_toggle
+            app.history_toggle,
+            app.theme_toggle
         );
         assert!(
             app.memory_area.max.y <= app.keypad_area.min.y + 1.0,
@@ -433,22 +471,31 @@ mod tests {
 
     #[test]
     fn a_dead_key_is_painted_dimmer_than_a_live_one() {
-        let (mut app, ctx) = startup();
-        for key in ["1", "÷", "0", "="] {
-            tap(&mut app, &ctx, key);
-        }
-        let shapes = pass(&mut app, &ctx, []);
-        let dead = label_brightness(&shapes, key_pos(&app, "7"));
-        let live = label_brightness(&shapes, key_pos(&app, "C"));
-        assert!(
-            dead < live,
-            "greyed key label {dead} is not dimmer than a live one {live}"
-        );
+        // Both palettes, because egui 0.37 dims a disabled widget with paint alpha rather than
+        // with a `disabled` colour in the palette — so this is the only check that it still works.
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            let (mut app, ctx) = startup();
+            theme::install(&ctx);
+            ctx.set_theme(theme);
+            for key in ["1", "÷", "0", "="] {
+                tap(&mut app, &ctx, key);
+            }
+            let shapes = pass(&mut app, &ctx, []);
+            let dead = label_brightness(&shapes, key_pos(&app, "7"));
+            let live = label_brightness(&shapes, key_pos(&app, "C"));
+            assert!(
+                dead < live,
+                "{theme:?}: greyed key label {dead} is not dimmer than a live one {live}"
+            );
 
-        tap(&mut app, &ctx, "C");
-        let shapes = pass(&mut app, &ctx, []);
-        let back = label_brightness(&shapes, key_pos(&app, "7"));
-        assert!(back > dead, "the lockout lifted but the key stayed grey");
+            tap(&mut app, &ctx, "C");
+            let shapes = pass(&mut app, &ctx, []);
+            let back = label_brightness(&shapes, key_pos(&app, "7"));
+            assert!(
+                back > dead,
+                "{theme:?}: lockout lifted but the key stayed grey"
+            );
+        }
     }
 
     #[test]
