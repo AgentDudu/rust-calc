@@ -180,7 +180,9 @@ Phase 1 is the honest milestone: the calculator exists and is proven before any 
 
 **Landed:** phase 0 (scaffold, PR-less), phase 1 (engine + parity, PR #1), phase 2 (keypad + display, PR #2),
 phase 3 (keyboard + focus, PR #3), phase 4 (memory bar + history panel, PR #4), phase 5 (error + edge
-states, PR #5) and phase 6 (theme + icon, PR #7) are on `develop`. Left: phase 7, the release build.
+states, PR #5), phase 6 (theme + icon, PR #7) and phase 7 (release build, PR #8) are on `develop`.
+All seven phases are landed; nothing in the plan is left open except the two items listed as declined
+below (the exe file's own icon, and the renderer swap).
 
 **Phase 6 notes.** Default is `ThemePreference::System`, which egui already follows — Windows' calculator
 follows the OS theme, so that is parity, and a top-bar button cycles System → Light → Dark for anyone who
@@ -195,6 +197,32 @@ the OS flips and no per-frame work is needed.
 - **Icon deviation:** PLAN said `.ico`. The window icon is 32×32 RGBA drawn in code — no image crate, no
   binary blob, no anti-aliasing. The *executable file's* icon in Explorer is untouched and still needs a
   real `.ico` resource (a build script or `winres`) if you want one; the window and taskbar icon are fine.
+
+**Phase 7 notes — the release build, measured not assumed.**
+
+| build | size | CRT imports |
+|---|---|---|
+| dynamic CRT (as committed before phase 7) | 8,145,408 B = 7.77 MiB | `VCRUNTIME140.dll`, `api-ms-win-crt-*` |
+| `-C target-feature=+crt-static` (**shipped**) | 8,366,080 B = 7.98 MiB | none — OS-inbox DLLs only |
+
+- **The flag exists because of an import table, not a hunch.** The dynamic build imports
+  `VCRUNTIME140.dll`, which ships with the VC++ redistributable and **not** with Windows: a clean machine
+  fails with "VCRUNTIME140.dll not found". A single file that is not actually single. Static costs 220 KB
+  and was verified to launch.
+- **How each claim was checked, from the binary:** PE header at `e_lfanew`; COFF header is 20 bytes after
+  the `PE\0\0` signature (reading `SizeOfOptionalHeader` from the wrong offset yields `0` and a section
+  table of zeros); `Subsystem` is at optional-header offset 68 for both PE32 and PE32+ → **2 =
+  WINDOWS_GUI, so no console window**, proven from the artifact rather than from `windows_subsystem`.
+  Imports come from data-directory entry 1 through the section table → 23 DLLs, no CRT.
+- **"< 8 MB" is ambiguous and this passes the generous reading.** 7.98 MiB, 8.37 MB decimal. The release
+  profile has been maxed since phase 0 (`opt-level="s"`, `lto`, `codegen-units=1`, `panic="abort"`,
+  `strip`), so nothing cheap is left.
+- **Declined:** eframe's default renderer is **wgpu** (visible as `dxgi.dll` in the imports). Switching to
+  `glow` would probably shed megabytes but replaces the render path everything here was tested on.
+  `uiautomationcore.dll` is AccessKit — kept, it is how a screen reader reaches the buttons.
+- **Not checked:** running on a machine without the VC++ runtime (that is the claim static CRT makes, and
+  it was verified by import table, not by a clean VM); `cargo test --release`; the `.pdb` next to the exe
+  is a debug artifact, not a runtime dependency.
 
 **egui 0.37 API notes** (found the hard way, phase 2 — re-read before touching the UI layer):
 
@@ -287,7 +315,9 @@ git remote add origin https://github.com/AgentDudu/rust-calc.git
 git remote set-url --push origin https://github.com/AgentDudu/rust-calc.git   # https push; ssh if configured
 ```
 
-`origin` is the only remote. `target/`, `*.pdb`, `.cargo/` (local) in `.gitignore` from phase 0.
+`origin` is the only remote. `target/` and `*.pdb` in `.gitignore`. `.cargo/config.toml` **is** committed
+since phase 7 — it carries the static-CRT flag every release build needs — after an earlier phase ignored
+it as a local file.
 
 ### 9.2 Branch model
 
@@ -390,7 +420,8 @@ Verified facts, so this does not need re-researching:
 ## 10. Start here
 
 ```bash
-# done: cargo init, eframe pinned, git init + remote + develop pushed (no branch protection on main)
+# done: all seven phases on develop — engine, UI, keyboard, memory + history, error states, theme, release
+# the artifact: target/x86_64-pc-windows-msvc/release/rust-calc.exe, 7.98 MiB, no console, no CRT imports
 cargo test && cargo clippy --all-targets -- -D warnings
-# next: src/core/calc.rs + tests, before any UI
+# next: nothing in the plan is open. Optional: a real .ico for the exe file, or a release/* cut to main
 ```

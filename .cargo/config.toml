@@ -1,0 +1,5 @@
+# Static CRT. Without this the exe imports VCRUNTIME140.dll, which is not part of Windows, so a
+# clean machine fails with "VCRUNTIME140.dll not found" — a single file that is not actually single.
+# Cost: 220 KB. Checked by reading the import table of the release build, not by trusting this flag.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
