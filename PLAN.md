@@ -233,7 +233,11 @@ states, PR #5) are on `develop`.
   Type into the window once per phase; the title bar shows what the app received.
   Phase 4 adds mouse-only paths proven headlessly (memory buttons, history toggle, entry reuse); the panel's
   own Clear button is covered only through `Ctrl+D`, which calls the same engine method.
-  Phase 5's lockout is proven by clicks being ignored — nothing checks that a greyed button *renders* dimmer.
+  Phase 5's lockout is proven by clicks being ignored *and* from the paint list:
+  `Context::run_ui` returns `FullOutput.shapes`, and `a_dead_key_is_painted_dimmer_than_a_live_one`
+  compares the brightness of a locked key's label with a live one. Trap worth keeping: a greyed
+  label is the same grey at **half alpha**, and `Color32::to_srgba_unmultiplied` folds that alpha
+  back out — the first version measured 645 == 645 and looked like a real bug.
 - No UI snapshot tests in v1 — egui screenshot harness costs more than it returns for 20 buttons.
 
 ---
