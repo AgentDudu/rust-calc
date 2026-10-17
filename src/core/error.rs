@@ -8,6 +8,7 @@ pub enum CalcError {
 }
 
 impl CalcError {
+    #[must_use]
     pub fn message(self) -> &'static str {
         match self {
             CalcError::DivideByZero => "Cannot divide by zero",

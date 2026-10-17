@@ -29,6 +29,7 @@ pub enum Input {
 
 impl Input {
     /// Keyboard/button character, for the ones that have a key. Phase 3 wires this to input events.
+    #[must_use]
     pub fn from_char(c: char) -> Option<Input> {
         Some(match c {
             '0'..='9' => Input::Digit(c),
@@ -80,6 +81,7 @@ impl Default for Calculator {
 }
 
 impl Calculator {
+    #[must_use]
     pub fn new() -> Self {
         Calculator {
             display: "0".to_string(),
@@ -103,6 +105,9 @@ impl Calculator {
     }
 
     fn apply(&mut self, input: Input) {
+        // The match below covers every variant, which is the point: a new Input has nowhere to go
+        // until it is handled.
+        #[allow(clippy::enum_glob_use, reason = "the match is exhaustive over Input")]
         use Input::*;
 
         match input {
@@ -168,6 +173,7 @@ impl Calculator {
 
     /// What the display line shows, separators included. An error shows Windows' own wording,
     /// with no prefix — the parity harness adds its `Error: ` marker, the screen must not.
+    #[must_use]
     pub fn display_text(&self) -> String {
         match self.error {
             Some(error) => error.message().to_string(),
@@ -175,17 +181,20 @@ impl Calculator {
         }
     }
 
+    #[must_use]
     pub fn has_error(&self) -> bool {
         self.error.is_some()
     }
 
     /// Last input delivered to the engine. Stays set even when an error lockout ignored it —
     /// it records that a key reached the engine, which is what tests and diagnostics ask.
+    #[must_use]
     pub fn last_input(&self) -> Option<Input> {
         self.last_input
     }
 
     /// The dim line above the display: `12 +` while waiting, `12 + 7 =` after equals.
+    #[must_use]
     pub fn expression_text(&self) -> String {
         match (self.pending, self.acc) {
             (Some(op), Some(acc)) => format!("{} {}", fmt::format_display(acc), op.symbol()),
@@ -193,17 +202,20 @@ impl Calculator {
         }
     }
 
+    #[must_use]
     pub fn value(&self) -> f64 {
         self.display.parse().unwrap_or(0.0)
     }
 
     // ---------------------------------------------------------------- memory
 
+    #[must_use]
     pub fn memory_value(&self) -> f64 {
         self.memory
     }
 
     /// Whether MC / MR / M- have anything to act on.
+    #[must_use]
     pub fn has_memory(&self) -> bool {
         self.memory_set
     }
@@ -238,6 +250,7 @@ impl Calculator {
     // --------------------------------------------------------------- history
 
     /// Newest first.
+    #[must_use]
     pub fn history(&self) -> &[Entry] {
         &self.history
     }
@@ -379,7 +392,7 @@ impl Calculator {
     }
 
     fn digit_count(&self) -> usize {
-        self.display.chars().filter(|c| c.is_ascii_digit()).count()
+        self.display.chars().filter(char::is_ascii_digit).count()
     }
 
     fn set_value(&mut self, v: f64) {
@@ -704,7 +717,11 @@ mod tests {
         let mut calc = press(&digits("2+3="));
         calc.memory_store();
         calc.clear_history();
-        assert!(calc.history().is_empty());
+        assert_eq!(
+            calc.history(),
+            &[] as &[Entry],
+            "clear_history left entries"
+        );
         assert_eq!(calc.memory_value(), 5.0);
     }
 
@@ -740,20 +757,20 @@ mod tests {
             Backspace,
         ];
         // Deterministic pseudo-random walk over the input alphabet.
-        let mut state = 0x2545f4914f6cdd1du64;
+        let mut state = 0x2545_f491_4f6c_dd1du64;
         for _ in 0..20_000 {
             state = state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
             let mut calc = Calculator::new();
             for _ in 0..12 {
                 calc.input(pool[(state >> ((12 - 1) * 4)) as usize & (pool.len() - 1)]);
                 state = state
-                    .wrapping_mul(6364136223846793005)
-                    .wrapping_add(1442695040888963407);
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
             }
             let text = calc.display_text();
-            assert!(!text.is_empty());
+            assert_ne!(text, String::new(), "a display is never empty");
         }
     }
 }

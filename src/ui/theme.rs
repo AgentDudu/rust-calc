@@ -105,10 +105,10 @@ pub fn icon() -> egui::IconData {
     let mut rgba = vec![0u8; (SIZE * SIZE * 4) as usize];
     for y in 0..SIZE {
         for x in 0..SIZE {
-            let pixel = if !inside_rounded(x, y, SIZE, RADIUS) {
-                Color32::TRANSPARENT
-            } else {
+            let pixel = if inside_rounded(x, y, SIZE, RADIUS) {
                 glyph(x, y)
+            } else {
+                Color32::TRANSPARENT
             };
             let at = ((y * SIZE + x) * 4) as usize;
             rgba[at..at + 4].copy_from_slice(&pixel.to_array());
@@ -133,8 +133,12 @@ fn inside_rounded(x: u32, y: u32, size: u32, radius: u32) -> bool {
         (_, true, _, true) => (size - radius - 1, size - radius - 1),
         _ => return true,
     };
-    let (dx, dy) = (x as i32 - corner.0 as i32, y as i32 - corner.1 as i32);
-    dx * dx + dy * dy <= (radius * radius) as i32
+    // Distances, not signed offsets, so no cast can wrap.
+    let (dx, dy) = (
+        u64::from(x.abs_diff(corner.0)),
+        u64::from(y.abs_diff(corner.1)),
+    );
+    dx * dx + dy * dy <= u64::from(radius) * u64::from(radius)
 }
 
 /// A display bar over an equals sign: readable at 16 px, which is all a taskbar icon has to be.

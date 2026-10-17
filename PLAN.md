@@ -257,6 +257,12 @@ the OS flips and no per-frame work is needed.
 - **Needs a human:** how the icon reads at 16 px in Explorer and on the taskbar. Its presence in the PE and its
   pixels are proven; legibility at that size is an eye call.
 
+**Release cut — v0.1.0 (done).**
+
+`main` did not exist: the repo was created with `develop` as its default branch, so the cut had to bootstrap it.
+`main` = `develop` = `840c63b`, annotated tag `v0.1.0` pushed, `release/0.1.0` kept as provenance (deleting a
+remote ref is blocked by the harness safety net). Nothing guards `main` yet — see §9.7 for the gate that would.
+
 **egui 0.37 API notes** (found the hard way, phase 2 — re-read before touching the UI layer):
 
 - `Context::run` is gone: use `ctx.run_ui(raw_input, |ui| ...) -> FullOutput`, then `.drop_without_applying_deltas()`.
@@ -431,7 +437,7 @@ gh pr create --base main --head release/0.1.0 --title "chore(release): v0.1.0" -
 - `gh` CLI available and authed as `AgentDudu` (https, `repo` scope).
 - Commit `Cargo.lock` (binary crate), so CI and your machine build the same tree.
 
-### 9.6 Restoring a real second-party gate (not in place)
+### 9.6 Restoring a real second-party gate (the bot exists now; the rule does not)
 
 Verified facts, so this does not need re-researching:
 
@@ -448,13 +454,46 @@ Verified facts, so this does not need re-researching:
 4. Weaker alternative with no new identity: a required status check `human-approval` that only you trigger
    from the Actions tab. It is a real human action, but I hold `repo` scope, so I could trigger it too.
 
+### 9.7 The bot account (in place since 2026-07-29)
+
+The second identity exists: `pigeion` / `pigeion-bot[bot]`, a user-owned GitHub App (`01268834a80329e8f532`,
+"pi release bot"), installed on this repo with Contents + Pull requests + **Pull request reviews: write**.
+
+| what | value |
+|---|---|
+| bot token | `gh auth token --hostname github.com.app.pi-release-bot` (keyring service `gh:github.com.app.pi-release-bot`) |
+| identity check | `GET /user` → `"bot" in login` |
+| approve | REST `POST /issues/{n}/reviews` `event: APPROVE` — the bot is the PR author's sibling identity, so it is not the PR author |
+| merge | **still the human account** — GitHub rejects a self-approval by the author, and the bot is not a collaborator |
+| token lifetime | installation tokens expire in 1 h; mint with `POST /app/installations/{id}/access_tokens` using a JWT signed with the App's private key (RSA-PKCS1v15-SHA256, doable with `openssl dgst`) |
+
+**What it does and does not buy.** It makes an approval *possible* from a non-author identity, which is what a
+required-review rule needs. It does not make the approval mean anything on its own — the gate is only real if
+the bot is told to approve after a human says yes. `main` is the branch to put the rule on; `develop` stays
+open because every phase merged there.
+
 ---
 
 ## 10. Start here
 
 ```bash
-# done: all seven phases on develop — engine, UI, keyboard, memory + history, error states, theme, release
-# the artifact: target/x86_64-pc-windows-msvc/release/rust-calc.exe, 7.98 MiB, no console, no CRT imports
-cargo test && cargo clippy --all-targets -- -D warnings
-# next: nothing in the plan is open. Optional: a real .ico for the exe file, or a release/* cut to main
+# done: seven phases + the exe icon + v0.1.0 cut to main (main == develop == 840c63b, tag v0.1.0)
+cargo test && cargo clippy --all-targets -- -D warnings -D clippy::pedantic
+# artifact: target/x86_64-pc-windows-msvc/release/rust-calc.exe — 7.99 MiB, no console, no CRT imports, own icon
+# next: nothing in the plan is open. Optional: a GitHub Release with the exe attached, and a branch rule on main
 ```
+
+---
+
+## 11. Quality gates
+
+Run in a tree that actually recompiled — `cargo clippy` replays cached results, so a warm `target/` can make a
+broken gate look clean. Verify lints in a fresh worktree or after `touch`ing the sources.
+
+- `cargo test`: 94 passing (41 core, 49 parity, 4 doc)
+- `cargo clippy --all-targets -- -D warnings`: clean
+- `cargo clippy --all-targets -- -D warnings -D clippy::pedantic`: **clean** — 34 findings cleared, see §6
+- `cargo doc --no-deps`: no warnings
+- `cargo fmt --check`: clean
+- Manual: the §7 checklist, every phase.
+
