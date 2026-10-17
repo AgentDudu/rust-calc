@@ -140,13 +140,17 @@ Implementation notes:
   `ui.put(rect, Button)` so they scale with the window instead of `egui::Grid` (which does not stretch).
 - Min window 320×420, default 360×560, resizable.
 - Display font auto-shrinks: pick size from `text.wrap_width / display.len()` buckets.
-- Keyboard (handle in `app.rs` before widgets, mark event consumed):
+- Keyboard (`ui/keyboard.rs`, polled in `app.rs` before widgets):
   `0-9` `.` `,` → digit/dot · `+ - * /` → ops · `Enter`/`=` → Equals · `Backspace` → ⌫ ·
   `Esc` → C · `Delete` → CE · `F9` → ± · `%` → percent · `Ctrl+H` → history panel · `Ctrl+D` → clear history.
-  Read chars from `ctx.input(|i| i.events())` `Event::Text`, keys from `Key::*`.
-- After every input, `ctx.memory_mut(|m| m.request_focus(button_id))`-style trick is **not** needed:
-  keep focus on a hidden response area so `Esc`/digits always land. Buttons must not steal keyboard focus
-  (`button.interact(focusable=false)` or set `sense` accordingly) — otherwise arrow/Enter behavior breaks.
+  Read chars from `Event::Text` (layout-independent, handles shifted symbols), the rest from `Key::*`.
+  **Map a key on one path only** — `=` on both would fire equals-repeat.
+  Events are not consumed: nothing else wants them while v1 has no text input widget. Revisit in phase 4
+  if the history panel adds focusable widgets.
+- Buttons use `Sense::CLICK`, not `Sense::click()`: the latter is focusable and a focused button swallows Enter.
+  Tradeoff — keypad buttons are not Tab-reachable. Windows' Calculator routes keys to the app the same way.
+- Title bar shows the display (`"19 - Calculator"`), as Windows does for screen readers. It is also the only
+  way to observe the app from outside without pixels, so the keyboard tests use it as an oracle.
 - Theme (`theme.rs`): dark Fluent-ish — bg `#202020`, digit buttons `#2d2d2d`, operator buttons `#323232`,
   `=` accent `#4cc2ff`-ish on dark, hover/pressed states from egui `Visuals`. Rounded 4px, no borders.
 - Accessibility: `button.on_hover_text("seven")` + `ui.ctx().accessibility` on by default; label every button
@@ -171,7 +175,8 @@ Each phase ends green: `cargo test` + `cargo clippy -- -D warnings` + manual run
 
 Phase 1 is the honest milestone: the calculator exists and is proven before any pixels.
 
-**Landed:** phase 0 (scaffold, PR-less), phase 1 (engine + parity, PR #1) and phase 2 (keypad + display, PR #2) are on `develop`.
+**Landed:** phase 0 (scaffold, PR-less), phase 1 (engine + parity, PR #1), phase 2 (keypad + display, PR #2)
+and phase 3 (keyboard + focus, PR #3) are on `develop`.
 
 **egui 0.37 API notes** (found the hard way, phase 2 — re-read before touching the UI layer):
 
@@ -195,6 +200,9 @@ Phase 1 is the honest milestone: the calculator exists and is proven before any 
 - **Property** (cheap, no new dep — hand-rolled loop): display string always parses back to a finite `f64`;
   `Negate(Negate(x)) == x`; no input sequence panics (fuzz digits/ops with `proptest` only if wanted later).
 - **Manual checklist**: keyboard-only session, resize at each phase, DPI 125%/150%, memory across many ops.
+  Phase 3's keystrokes are proven against the `Event::Text`/`Event::Key` shapes egui-winit emits, **not**
+  against real OS keystrokes — injecting them needs foreground focus, which the harness could not take.
+  Type into the window once per phase; the title bar shows what the app received.
 - No UI snapshot tests in v1 — egui screenshot harness costs more than it returns for 20 buttons.
 
 ---
