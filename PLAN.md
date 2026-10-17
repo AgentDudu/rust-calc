@@ -248,12 +248,12 @@ the OS flips and no per-frame work is needed.
   and did not respond; no clipped text at ~320 px or ~1200 px; text readable and buttons unoverlapped at
   scaled DPI. That retires the phase 3 caveat — real OS keystrokes match the `Event::Text`/`Event::Key`
   shapes egui-winit was read to emit, which is the only way that gap could have been closed.
-  Still unproven by mouse: the history panel's own **Clear** button (only `Ctrl+D`, which calls the same
-  engine method, has been exercised). Phase 6 adds three more eyeball items: the palettes actually look
-  Fluent rather than merely being different numbers, the **Theme** button still fits at the 320 px minimum
-  width (it is new since the last resize pass), and the drawn icon reads as a calculator at taskbar size.
-  Phase 4 adds mouse-only paths proven headlessly (memory buttons, history toggle, entry reuse); the panel's
-  own Clear button is covered only through `Ctrl+D`, which calls the same engine method.
+  The history panel's own **Clear** button, which only `Ctrl+D` had exercised, was clicked by hand in the
+  phase 6 pass. Phase 6's three eyeball items passed too: the palettes read as Fluent, the **Theme** button
+  fits at the 320 px minimum width, and the drawn icon reads as a calculator at taskbar size. So every
+  manual item raised so far is closed — the remaining gaps are the ones no eye can see (release-build size,
+  and the exe file's own icon, which is not drawn at all).
+  Phase 4 adds mouse-only paths proven headlessly (memory buttons, history toggle, entry reuse).
   Phase 5's lockout is proven by clicks being ignored *and* from the paint list:
   `Context::run_ui` returns `FullOutput.shapes`, and `a_dead_key_is_painted_dimmer_than_a_live_one`
   compares the brightness of a locked key's label with a live one. Trap worth keeping: a greyed
