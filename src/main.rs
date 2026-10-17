@@ -1,6 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Layout maths turns grid indices into pixel offsets. Those values are keypad-sized — single
+// digits to a few hundred — so the usize→f32 widening clippy worries about cannot happen.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "small layout indices, not usize-sized values"
+)]
 mod app;
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "small layout indices, not usize-sized values"
+)]
 mod ui;
 
 use eframe::egui;

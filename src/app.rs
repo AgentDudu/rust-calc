@@ -199,7 +199,11 @@ mod tests {
         tap(&mut app, &ctx, "6");
         type_text(&mut app, &ctx, "+4=");
         assert_eq!(app.calc.display_text(), "10");
-        assert_eq!(ctx.memory(|m| m.focused()), None, "a button stole focus");
+        assert_eq!(
+            ctx.memory(egui::Memory::focused),
+            None,
+            "a button stole focus"
+        );
     }
 
     #[test]
@@ -392,7 +396,11 @@ mod tests {
         type_text(&mut app, &ctx, "2+3=");
         assert_eq!(app.calc.history().len(), 1);
         press_with(&mut app, &ctx, egui::Key::D, Modifiers::COMMAND);
-        assert!(app.calc.history().is_empty());
+        assert_eq!(
+            app.calc.history(),
+            &[] as &[rust_calc::core::Entry],
+            "Ctrl+D must not add history"
+        );
     }
 
     #[test]
@@ -458,8 +466,10 @@ mod tests {
                     .override_text_color
                     .unwrap_or(text.fallback_color)
                     .to_srgba_unmultiplied();
-                let alpha = rgba[3] as u32;
-                found = Some((rgba[0] as u32 + rgba[1] as u32 + rgba[2] as u32) * alpha / 255);
+                let alpha = u32::from(rgba[3]);
+                found = Some(
+                    (u32::from(rgba[0]) + u32::from(rgba[1]) + u32::from(rgba[2])) * alpha / 255,
+                );
             }
         }
         found.unwrap_or_else(|| panic!("no label painted around {around:?}"))

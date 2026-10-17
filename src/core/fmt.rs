@@ -5,6 +5,7 @@
 /// while still printing an exact 16-digit integer unchanged.
 pub const MAX_SIG_DIGITS: usize = 16;
 
+#[must_use]
 pub fn format_display(value: f64) -> String {
     if !value.is_finite() {
         return "Overflow".to_string();
@@ -53,7 +54,9 @@ fn parts(value: f64) -> (String, i32, bool) {
 /// Rebuild a plain decimal from significant digits and the exponent of the first digit.
 fn plain(digits: &str, exp: i32) -> String {
     if exp >= 0 {
-        let int_len = (exp as usize) + 1;
+        // exp is non-negative here, so the conversion cannot fail; the fallback keeps a bad
+        // exponent from wrapping into a huge length the way `as usize` did.
+        let int_len = usize::try_from(exp).unwrap_or(0) + 1;
         if digits.len() > int_len {
             let (int, frac) = digits.split_at(int_len);
             format!("{int}.{frac}")
@@ -61,7 +64,11 @@ fn plain(digits: &str, exp: i32) -> String {
             format!("{}{}", digits, "0".repeat(int_len - digits.len()))
         }
     } else {
-        format!("0.{}{}", "0".repeat((-(exp) - 1) as usize), digits)
+        format!(
+            "0.{}{}",
+            "0".repeat(usize::try_from(exp.unsigned_abs() - 1).unwrap_or(0)),
+            digits
+        )
     }
 }
 

@@ -14,6 +14,7 @@ pub enum Op {
 }
 
 impl Op {
+    #[must_use]
     pub fn symbol(self) -> char {
         match self {
             Op::Add => '+',
@@ -24,6 +25,12 @@ impl Op {
     }
 }
 
+/// `a op b`, with the magnitude guard applied to whatever comes out.
+///
+/// # Errors
+///
+/// [`CalcError::DivideByZero`] when `op` is division and `b` is zero, plus whatever [`check`]
+/// rejects about the result.
 pub fn apply(a: f64, op: Op, b: f64) -> Result<f64, CalcError> {
     let r = match op {
         Op::Add => a + b,
@@ -40,6 +47,11 @@ pub fn apply(a: f64, op: Op, b: f64) -> Result<f64, CalcError> {
 }
 
 /// Single place where a number stops being displayable.
+///
+/// # Errors
+///
+/// [`CalcError::InvalidInput`] for NaN; [`CalcError::Overflow`] for an infinite value or one at or
+/// beyond [`MAX_MAGNITUDE`].
 pub fn check(v: f64) -> Result<f64, CalcError> {
     if v.is_nan() {
         Err(CalcError::InvalidInput)

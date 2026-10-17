@@ -24,7 +24,7 @@ pub fn poll(ui: &mut Ui, calc: &mut Calculator) -> Vec<Command> {
     let mut commands = Vec::new();
     let inputs = ui.input(|i| {
         let mut inputs = Vec::new();
-        for event in i.events.iter() {
+        for event in &i.events {
             inputs.extend(inputs_for(event));
             if let Some(command) = command_for(event) {
                 commands.push(command);
@@ -80,7 +80,7 @@ fn inputs_for(event: &Event) -> Vec<Input> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eframe::egui::{Event, Key, Modifiers};
+    use eframe::egui::{Event, Key, Modifiers, Pos2};
 
     fn key(key: Key) -> Event {
         Event::Key {
@@ -123,14 +123,17 @@ mod tests {
     #[test]
     fn the_equals_key_is_not_mapped_twice() {
         // `=` arrives as Text *and* as Key::Equals. Firing both would repeat equals.
-        assert!(inputs_for(&key(Key::Equals)).is_empty());
+        assert_eq!(inputs_for(&key(Key::Equals)), Vec::new());
         assert_eq!(inputs_for(&key(Key::Minus)), Vec::new());
     }
 
     #[test]
     fn unrelated_keys_are_ignored() {
-        assert!(inputs_for(&key(Key::Tab)).is_empty());
-        assert!(inputs_for(&Event::PointerMoved(Default::default())).is_empty());
+        assert_eq!(inputs_for(&key(Key::Tab)), Vec::new());
+        assert_eq!(
+            inputs_for(&Event::PointerMoved(Pos2::default())),
+            Vec::new()
+        );
     }
 
     fn key_with(key: Key, modifiers: Modifiers) -> Event {
@@ -171,7 +174,13 @@ mod tests {
 
     #[test]
     fn a_shortcut_is_not_also_a_calculator_input() {
-        assert!(inputs_for(&key_with(Key::H, Modifiers::COMMAND)).is_empty());
-        assert!(inputs_for(&key_with(Key::D, Modifiers::COMMAND)).is_empty());
+        assert_eq!(
+            inputs_for(&key_with(Key::H, Modifiers::COMMAND)),
+            Vec::new()
+        );
+        assert_eq!(
+            inputs_for(&key_with(Key::D, Modifiers::COMMAND)),
+            Vec::new()
+        );
     }
 }
