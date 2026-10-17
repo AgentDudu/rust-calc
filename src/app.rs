@@ -94,14 +94,21 @@ mod tests {
     const CLIENT: Vec2 = egui::vec2(360.0, 560.0);
 
     /// One egui pass carrying these events. `run_ui` needs no window and no GPU.
-    fn pass(app: &mut CalcApp, ctx: &Context, events: impl IntoIterator<Item = Event>) {
+    /// Returns what egui asked to paint, so a test can check colours and not only behaviour.
+    fn pass(
+        app: &mut CalcApp,
+        ctx: &Context,
+        events: impl IntoIterator<Item = Event>,
+    ) -> Vec<egui::epaint::ClippedShape> {
         let raw = RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, CLIENT)),
             events: events.into_iter().collect(),
             ..RawInput::default()
         };
-        ctx.run_ui(raw, |ui| app.show(ui))
-            .drop_without_applying_deltas();
+        let mut out = ctx.run_ui(raw, |ui| app.show(ui));
+        let shapes = std::mem::take(&mut out.shapes);
+        out.textures_delta.clear(); // the test never uploads a texture
+        shapes
     }
 
     /// Type a whole string in one pass — the events a fast typist sends.
@@ -397,6 +404,51 @@ mod tests {
             app.keypad_area
         );
         assert!(app.keypad_area.max.x <= app.history_area.min.x + 1.0);
+    }
+
+    /// How bright the label painted around this point looks on screen. Alpha counts: a greyed
+    /// label is the same grey at half alpha, so un-premultiplied rgb alone cannot tell them apart.
+    /// `shortcut:` takes the last text shape in the probe box — fine while one key = one label.
+    fn label_brightness(shapes: &[egui::epaint::ClippedShape], around: Pos2) -> u32 {
+        let probe = Rect::from_center_size(around, egui::vec2(16.0, 10.0));
+        let mut found = None;
+        for clipped in shapes {
+            if let egui::Shape::Text(text) = &clipped.shape
+                && text.visual_bounding_rect().intersects(probe)
+            {
+                let rgba = text
+                    .override_text_color
+                    .unwrap_or(text.fallback_color)
+                    .to_srgba_unmultiplied();
+                let alpha = rgba[3] as u32;
+                found = Some((rgba[0] as u32 + rgba[1] as u32 + rgba[2] as u32) * alpha / 255);
+            }
+        }
+        found.unwrap_or_else(|| panic!("no label painted around {around:?}"))
+    }
+
+    fn key_pos(app: &CalcApp, label: &str) -> Pos2 {
+        keypad::key_center(app.keypad_area, label).unwrap_or_else(|| panic!("no key {label}"))
+    }
+
+    #[test]
+    fn a_dead_key_is_painted_dimmer_than_a_live_one() {
+        let (mut app, ctx) = startup();
+        for key in ["1", "÷", "0", "="] {
+            tap(&mut app, &ctx, key);
+        }
+        let shapes = pass(&mut app, &ctx, []);
+        let dead = label_brightness(&shapes, key_pos(&app, "7"));
+        let live = label_brightness(&shapes, key_pos(&app, "C"));
+        assert!(
+            dead < live,
+            "greyed key label {dead} is not dimmer than a live one {live}"
+        );
+
+        tap(&mut app, &ctx, "C");
+        let shapes = pass(&mut app, &ctx, []);
+        let back = label_brightness(&shapes, key_pos(&app, "7"));
+        assert!(back > dead, "the lockout lifted but the key stayed grey");
     }
 
     #[test]
