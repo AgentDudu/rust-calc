@@ -1,11 +1,15 @@
 //! The 4×6 Standard keypad. Buttons fill the space left by the display lines, so the layout
 //! survives window resizing — `egui::Grid` would not stretch.
 
-use eframe::egui::{Button, Rect, RichText, Ui, Vec2};
+use eframe::egui::{Button, Rect, RichText, Sense, Ui, Vec2};
 use rust_calc::core::{Calculator, Input};
 
 const COLS: usize = 4;
 const GAP: f32 = 2.0;
+
+/// Click without focus. `Sense::click()` is focusable, and a focused button swallows Enter —
+/// the keyboard belongs to the calculator, not to whichever button was last clicked.
+const SENSE: Sense = Sense::CLICK;
 
 pub const ROWS: [[(&str, Input); COLS]; 6] = [
     [
@@ -79,7 +83,9 @@ pub fn show(ui: &mut Ui, calc: &mut Calculator) -> Rect {
             )
             .shrink(GAP);
 
-            let button = Button::new(RichText::new(*label).size(font_size)).min_size(rect.size());
+            let button = Button::new(RichText::new(*label).size(font_size))
+                .min_size(rect.size())
+                .sense(SENSE);
             if ui.put(rect, button).clicked() {
                 calc.input(*input);
             }
@@ -117,6 +123,11 @@ mod tests {
         for input in ALL_INPUTS {
             assert!(keys.contains(&input), "no key sends {input:?}");
         }
+    }
+
+    #[test]
+    fn buttons_do_not_take_keyboard_focus() {
+        assert!(!SENSE.is_focusable(), "a focusable button swallows Enter");
     }
 
     #[test]
