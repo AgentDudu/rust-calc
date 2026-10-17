@@ -175,8 +175,8 @@ Each phase ends green: `cargo test` + `cargo clippy -- -D warnings` + manual run
 
 Phase 1 is the honest milestone: the calculator exists and is proven before any pixels.
 
-**Landed:** phase 0 (scaffold, PR-less), phase 1 (engine + parity, PR #1), phase 2 (keypad + display, PR #2)
-and phase 3 (keyboard + focus, PR #3) are on `develop`.
+**Landed:** phase 0 (scaffold, PR-less), phase 1 (engine + parity, PR #1), phase 2 (keypad + display, PR #2),
+phase 3 (keyboard + focus, PR #3) and phase 4 (memory bar + history panel, PR #4) are on `develop`.
 
 **egui 0.37 API notes** (found the hard way, phase 2 — re-read before touching the UI layer):
 
@@ -188,6 +188,23 @@ and phase 3 (keyboard + focus, PR #3) are on `develop`.
 - Headless UI tests work: `Context::default()` + synthetic events, no window, no GPU. Kept as the phase-2
   click proof; it also means "no UI snapshot tests" in §7 costs less than assumed — extend it in phase 3
   for keyboard events rather than reaching for a screenshot harness.
+
+**egui 0.37 API notes, phase 4:**
+
+- There is **no `SidePanel` / `TopBottomPanel`** in 0.37 — one `egui::Panel` type covers all four edges:
+  `Panel::right("id").exact_size(190.0).resizable(false).show(ui, ..)`, `Panel::top("id").show(ui, ..)`.
+  `show` takes `&mut Ui` and there is no `alloc_and_show`.
+- Greyed-but-placed widget: `ui.add_enabled_ui(enabled, |ui| ui.put(rect, button))`. `add_enabled` alone
+  would drop the button into the cursor flow instead of the rect the layout maths assumes.
+- `Button::new((RichText, RichText))` — widgets take tuple atoms (`IntoAtoms`), so one button can hold a
+  dim expression and a bold result. Two lines need a layout, not a button.
+- A panel shown before the others claims its edge first: the right history panel takes full height and the
+  top bar stops at its edge, which is what squeezes the keypad instead of covering it.
+- Layout-for-tests pattern (keypad, memory bar, history list): `show` returns the `Rect` it drew into and a
+  `#[cfg(test)]` helper maps label/index → click point with the same arithmetic. Any new bar needs both, or
+  its clicks are unprovable.
+- Engine note: `C` rebuilds `Calculator` keeping memory and history. A new persistent field must be added
+  to that `Calculator { .. }` literal or `C` silently resets it — `memory_set` broke exactly that way.
 
 ---
 
@@ -203,6 +220,8 @@ and phase 3 (keyboard + focus, PR #3) are on `develop`.
   Phase 3's keystrokes are proven against the `Event::Text`/`Event::Key` shapes egui-winit emits, **not**
   against real OS keystrokes — injecting them needs foreground focus, which the harness could not take.
   Type into the window once per phase; the title bar shows what the app received.
+  Phase 4 adds mouse-only paths proven headlessly (memory buttons, history toggle, entry reuse); the panel's
+  own Clear button is covered only through `Ctrl+D`, which calls the same engine method.
 - No UI snapshot tests in v1 — egui screenshot harness costs more than it returns for 20 buttons.
 
 ---
