@@ -163,7 +163,11 @@ Implementation notes:
 
 ## 6. Phases
 
-Each phase ends green: `cargo test` + `cargo clippy -- -D warnings` + manual run.
+Each phase ends green: `cargo test` + `cargo clippy -- -D warnings` + manual run. Run them in a tree that
+actually recompiled: `cargo clippy` replays cached results, so a warm `target/` can make a broken gate look
+clean — which is exactly how `clippy::pedantic` came to be reported clean in phases 5–7 when a clean checkout
+reports 26 findings in `src/core/*`. Pedantic stays out of the gate; the findings are a tidy-up branch, not a
+release-week change.
 
 | # | Deliverable | Acceptance |
 |---|---|---|
@@ -175,6 +179,7 @@ Each phase ends green: `cargo test` + `cargo clippy -- -D warnings` + manual run
 | **5** | Error + edge states | ÷0 shows "Cannot divide by zero" and locks keypad; overflow; 16-digit cap; `√-1` |
 | **6** | Theme + responsive layout + icon | resize from 320→1200 px wide, no clipped text; dark theme; `.ico` icon |
 | **7** | Release build | `cargo build --release --target x86_64-pc-windows-msvc` → single exe, no console window, < 8 MB |
+| **8** | The exe's own icon | Explorer shows the calculator, not Rust's feather (`assets/icon.ico` + `build.rs`) |
 
 Phase 1 is the honest milestone: the calculator exists and is proven before any pixels.
 
@@ -194,9 +199,9 @@ the OS flips and no per-frame work is needed.
 - **egui 0.37 dims a disabled widget with paint alpha, not a `disabled` palette colour** — there is no
   `Widgets::disabled` field. So a palette cannot be checked for "is greyed still greyed"; only the paint
   list can say, and `a_dead_key_is_painted_dimmer_than_a_live_one` now runs it against both palettes.
-- **Icon deviation:** PLAN said `.ico`. The window icon is 32×32 RGBA drawn in code — no image crate, no
-  binary blob, no anti-aliasing. The *executable file's* icon in Explorer is untouched and still needs a
-  real `.ico` resource (a build script or `winres`) if you want one; the window and taskbar icon are fine.
+- **Icon deviation:** PLAN said `.ico`. The *window* icon is 32×32 RGBA drawn in code — no image crate, no
+  binary blob, no anti-aliasing. The *executable file's* icon in Explorer needed a real resource; that is
+  phase 8 below.
 
 **Phase 7 notes — the release build, measured not assumed.**
 
@@ -214,6 +219,10 @@ the OS flips and no per-frame work is needed.
   table of zeros); `Subsystem` is at optional-header offset 68 for both PE32 and PE32+ → **2 =
   WINDOWS_GUI, so no console window**, proven from the artifact rather than from `windows_subsystem`.
   Imports come from data-directory entry 1 through the section table → 23 DLLs, no CRT.
+  Two offsets bit this twice, so write them down: `SizeOfOptionalHeader` is at `pe+20` (not `pe+8`), and a
+  section's `PointerToRawData` is at `section+20` (not `section+16`). Read either wrong and the section table
+  decodes to zeros or to plausible-looking garbage — an import list built that way can name DLLs the file does
+  not import. The 23-DLL figure is from a walk with both correct, re-run after phase 8 added a resource section.
 - **"< 8 MB" is ambiguous and this passes the generous reading.** 7.98 MiB, 8.37 MB decimal. The release
   profile has been maxed since phase 0 (`opt-level="s"`, `lto`, `codegen-units=1`, `panic="abort"`,
   `strip`), so nothing cheap is left.
@@ -223,6 +232,30 @@ the OS flips and no per-frame work is needed.
 - **Not checked:** running on a machine without the VC++ runtime (that is the claim static CRT makes, and
   it was verified by import table, not by a clean VM); `cargo test --release`; the `.pdb` next to the exe
   is a debug artifact, not a runtime dependency.
+
+**Phase 8 notes — the exe's own icon.**
+
+- **What shipped:** `assets/icon.ico` (16/24/32/48 px as 32 bpp BMP + a 256 px PNG entry for Explorer's large
+  views, 19 KB) and `build.rs`, which compiles it with the SDK's `rc.exe` and hands the `.res` to the linker.
+  Generated, not painted: `python tools/make_icon.py` writes the container, BMP payload and PNG by hand, so the
+  asset is reproducible and diffable instead of an opaque blob. No new dependency — `winresource` would still
+  have to find the same `rc.exe`.
+- **`rc.exe` is not on `PATH`.** It lives in `Windows Kits\10\bin\<version>\x64`, so `build.rs` looks in `$RC`,
+  then `PATH`, then the newest SDK directory, and if it finds nothing it warns and builds without an icon.
+  A missing icon is not a reason to break someone's build.
+- **The two icons had already drifted.** `icon()` still painted `#0078D4` with a white glyph while the palette
+  had moved to `#005FB8`, dark band, pale bars. Both now read the same consts, and a test asserts the `.ico`
+  contains those three colours — an asset and a drawing have no other way to disagree loudly.
+- **`inside_rounded` cut square corners, not round ones.** It tested *every* corner whose corner-box matched,
+  and a pixel in the top-left square satisfies all four box tests, so the far corners' circles rejected it: every
+  6×6 corner square came off, which reads as a chamfer. Fixed by testing only the corner the pixel is in. The old
+  test passed because it probed `(0,0)` (cut either way) and the centre (inside either way) — a test that cannot
+  fail is not a test.
+- **Verified with the shell's own API:** `Icon::ExtractAssociatedIcon` on the built exe returns 32×32 with band
+  `#1B1B1B`, bars `#CFE4FA`, tile `#005FB8`, transparent corner. The `.ico` colour test was mutation-checked —
+  blacking the accent out of the file fails it with "tile colour missing".
+- **Needs a human:** how the icon reads at 16 px in Explorer and on the taskbar. Its presence in the PE and its
+  pixels are proven; legibility at that size is an eye call.
 
 **egui 0.37 API notes** (found the hard way, phase 2 — re-read before touching the UI layer):
 
